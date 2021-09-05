@@ -1,18 +1,13 @@
-#include "gpu.hpp"
+#include "init.hpp"
 
 #include <sstream>
 #include <vector>
 #include <algorithm>
 
-namespace gpu {
+#define VMA_IMPLEMENTATION
+#include <lib/vk_mem_alloc.h>
 
-  void vk_check_error(VkResult result, const char *file, int line, const char *cmd) {
-    if (result != VK_SUCCESS) {
-      std::stringstream ss; 
-      ss << "Error : " << file << ":" << line << " " << cmd << " : " << " VkResult == " << (uint32_t)result;
-      throw std::runtime_error {ss.str()}; 
-    }
-  }  
+namespace gpu {
 
   Device::Device(const DeviceConfig &conf) {
     create_instance(conf);
@@ -29,10 +24,15 @@ namespace gpu {
     find_device(conf);
     create_device(conf);
     create_swapchain(conf);
+    init_allocator();
   }
 
   Device::~Device() {
     vkDeviceWaitIdle(device);
+
+    if (allocator) {
+      vmaDestroyAllocator(allocator);
+    }
 
     if (swapchain) {
       vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -259,7 +259,7 @@ namespace gpu {
       .imageColorSpace = fmt.colorSpace,
       .imageExtent = swapchain_extent,
       .imageArrayLayers = 1,
-      .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+      .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
       .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
       .queueFamilyIndexCount = 1,
       .pQueueFamilyIndices = &queue_family,
@@ -271,7 +271,51 @@ namespace gpu {
     };
 
     VKCHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
+    uint32_t s_image_count = 0;
+    VKCHECK(vkGetSwapchainImagesKHR(device, swapchain, &s_image_count, nullptr));
+    swapchain_images.resize(s_image_count);
+    VKCHECK(vkGetSwapchainImagesKHR(device, swapchain, &s_image_count, swapchain_images.data()));
   }
+
+  /*std::vector<gpu::Image> Device::get_backbuffers() {
+    if (!swapchain) {
+      return {};
+    }
+    std::vector<VkImage> images;
+    std::vector<gpu::Image> backbuffers;
+    //backbuffers.reserve();
+
+    uint32_t s_image_count = 0;
+    VKCHECK(vkGetSwapchainImagesKHR(device, swapchain, &s_image_count, nullptr));
+    images.resize(s_image_count);
+    VKCHECK(vkGetSwapchainImagesKHR(device, swapchain, &s_image_count, images.data()));
+    backbuffers.reserve(s_image_count);
+
+    VkImageCreateInfo image_info {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = 0,
+      .imageType = VK_IMAGE_TYPE_2D,
+      .format = swapchain_format,
+      .extent {swapchain_extent.width, swapchain_extent.height, 1},
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = VK_IMAGE_TILING_OPTIMAL,
+      .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 0,
+      .pQueueFamilyIndices = nullptr
+    };
+
+    for (uint32_t i = 0; i < s_image_count; i++) {
+      gpu::Image temp {*this};
+      temp.create_reference(images[i], image_info);
+      backbuffers.push_back(std::move(temp));
+    }
+
+    return backbuffers;
+  }*/
 
   void Device::destroy_instance_extensions() {
     if (!instance)
@@ -304,5 +348,37 @@ namespace gpu {
     }
 
     return details;
+  }
+
+  void Device::init_allocator()
+  {
+    VmaVulkanFunctions vk_func {
+      vkGetPhysicalDeviceProperties,
+      vkGetPhysicalDeviceMemoryProperties,
+      vkAllocateMemory,
+      vkFreeMemory,
+      vkMapMemory,
+      vkUnmapMemory,
+      vkFlushMappedMemoryRanges,
+      vkInvalidateMappedMemoryRanges,
+      vkBindBufferMemory,
+      vkBindImageMemory,
+      vkGetBufferMemoryRequirements,
+      vkGetImageMemoryRequirements,
+      vkCreateBuffer,
+      vkDestroyBuffer,
+      vkCreateImage,
+      vkDestroyImage,
+      vkCmdCopyBuffer,
+    };
+
+    VmaAllocatorCreateInfo info {};
+    info.device = device;
+    info.instance = instance;
+    info.physicalDevice = phys_device;
+    info.vulkanApiVersion = VK_API_VERSION_1_0;
+    info.pVulkanFunctions = &vk_func;
+
+    VKCHECK(vmaCreateAllocator(&info, &allocator));
   }
 }
