@@ -94,8 +94,10 @@ namespace gpu {
     std::vector<Image> get_swapchain_images(const Swapchain &swapchain);
 
     VkDevice api_device() const { return logical_device; }
-    VkQueue api_queueu() const { return queue; }
-    
+    VkQueue api_queue() const { return queue; }
+    VkPhysicalDevice api_physical_device() const { return physical_device; }
+    uint32_t get_queue_family() const { return queue_family_index; }
+
   private:
     VkPhysicalDevice physical_device {nullptr};
     VkDevice logical_device {nullptr};

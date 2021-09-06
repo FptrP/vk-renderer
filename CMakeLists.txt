@@ -13,6 +13,7 @@ include_directories(src)
 
 
 set(spv-dir "src/lib/spirv-cross")
+set(imgui-dir "src/lib/imgui")
 
 set(spirv-cross-sources
 	${spv-dir}/spirv_cross.cpp
@@ -21,6 +22,13 @@ set(spirv-cross-sources
 	${spv-dir}/spirv_cfg.cpp
   ${spv-dir}/spirv_glsl.cpp)
 
+set(imgui-sources
+  ${imgui-dir}/imgui_draw.cpp
+  ${imgui-dir}/imgui_impl_sdl.cpp
+  ${imgui-dir}/imgui_impl_vulkan.cpp
+  ${imgui-dir}/imgui_tables.cpp
+  ${imgui-dir}/imgui_widgets.cpp
+  ${imgui-dir}/imgui.cpp)
 
 add_executable(main 
   src/main.cpp
@@ -30,5 +38,6 @@ add_executable(main
   src/gpu/shader.cpp
   src/lib/volk.c
   ${spirv-cross-sources}
+  ${imgui-sources}
 )
 target_link_libraries(main dl ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES})

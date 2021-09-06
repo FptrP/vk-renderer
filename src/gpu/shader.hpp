@@ -34,6 +34,8 @@ namespace gpu {
       return *this;
     }
 
+    VkDescriptorPool current_pool() const { return pools[index]; }
+    
   private:
     VkDevice device {nullptr};
     std::vector<VkDescriptorPool> pools;

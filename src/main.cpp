@@ -7,7 +7,7 @@
 #include "gpu/driver.hpp"
 #include "gpu/shader.hpp"
 #include "base_app.hpp"
-
+#include "imgui_context.hpp"
 
 struct App : SDLVulkanAppBase {
   App(uint32_t width, uint32_t height) 
@@ -16,7 +16,8 @@ struct App : SDLVulkanAppBase {
       main_subpass {gpu_device().api_device(), {swapchain_fmt().format}},
       triangle_pipeline {init_pipeline(gpu_device().api_device(), main_subpass)},
       cmdbuffer_pool {gpu_device().new_command_pool()},
-      frames_count {(uint32_t)backbuffers().size()}
+      frames_count {(uint32_t)backbuffers().size()},
+      imgui_ctx {sdl_window(), gpu_instance(), gpu_device(), frames_count, main_subpass}
   {
     const auto &dev = gpu_device();
     cmd_buffers = cmdbuffer_pool.allocate(frames_count);
@@ -34,15 +35,21 @@ struct App : SDLVulkanAppBase {
       gpu::ImageViewRange view {VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
       framebuffers.push_back(gpu::Framebuffer {gpu_device().api_device(), main_subpass, ext, {img.get_view(view)}});
     }
-  
+
+    imgui_ctx.create_fonts(gpu_device(), cmd_buffers[0]);
   }
   
   void run() {
     bool quit = false; 
 
     while (!quit) {
+      imgui_ctx.new_frame();
+      ImGui::Text("Hello, world!");
+
       SDL_Event event;
       while (SDL_PollEvent(&event)) {
+        imgui_ctx.process_event(event);
+        
         if (event.type == SDL_QUIT) {
           quit = true;
         }
@@ -57,7 +64,7 @@ struct App : SDLVulkanAppBase {
   void render() {
     VkCommandBuffer cmd = cmd_buffers[frame_index]; 
     VkDevice device = gpu_device().api_device();
-    VkQueue queue = gpu_device().api_queueu();
+    VkQueue queue = gpu_device().api_queue();
     VkSwapchainKHR swapchain = gpu_swapchain().api_swapchain();
     VkFence cmd_fence = submit_fences[frame_index];
 
@@ -115,6 +122,8 @@ struct App : SDLVulkanAppBase {
     vkCmdSetViewport(cmd, 0, 1, &vp);
     vkCmdSetScissor(cmd, 0, 1, &clear_rect.rect);
     vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    imgui_ctx.render(cmd);
     vkCmdEndRenderPass(cmd);
     
     gpu::Barrier to_present {
@@ -175,6 +184,7 @@ private:
 
   const uint32_t frames_count = 0;
 
+  ImguiContext imgui_ctx;
   std::vector<VkCommandBuffer> cmd_buffers;
   std::vector<gpu::Fence> submit_fences;
   std::vector<gpu::Semaphore> image_acquire_semaphores;
@@ -196,7 +206,7 @@ private:
 };
 
 int main() {
-  App app {800, 600};
+  App app {1280, 720};
   app.run();
   return 0;
 }
