@@ -6,8 +6,11 @@
 
 #include "gpu/driver.hpp"
 #include "gpu/shader.hpp"
+#include "scene/scene.hpp"
 #include "base_app.hpp"
-#include "imgui_context.hpp"
+#include "gpu/imgui_context.hpp"
+#include "framegraph.hpp"
+#include "subpasses.hpp"
 
 struct App : SDLVulkanAppBase {
   App(uint32_t width, uint32_t height) 
@@ -37,6 +40,15 @@ struct App : SDLVulkanAppBase {
     }
 
     imgui_ctx.create_fonts(gpu_device(), cmd_buffers[0]);
+
+    backbuffer_id = render_graph.create_image_desc(1, 1, VK_IMAGE_ASPECT_COLOR_BIT, "backbuffer_img", true);
+
+    BaseSubpass backbuffer_subpass;
+    backbuffer_subpass.write_color_attachment(backbuffer_id);
+    backbuffer_subpass_id = backbuffer_subpass.flush(render_graph);
+
+    PresentPrepareSubpass present_prepare {backbuffer_id};
+    present_prepare_id = present_prepare.flush(render_graph);
   }
   
   void run() {
@@ -44,7 +56,11 @@ struct App : SDLVulkanAppBase {
 
     while (!quit) {
       imgui_ctx.new_frame();
-      ImGui::Text("Hello, world!");
+      
+      ImGui::Begin("Settings");
+      ImGui::Text("Hello world!");
+      ImGui::End();
+
 
       SDL_Event event;
       while (SDL_PollEvent(&event)) {
@@ -76,66 +92,52 @@ struct App : SDLVulkanAppBase {
     vkWaitForFences(device, 1, &cmd_fence, VK_TRUE, ~0ull);
     submit_fences[frame_index].reset();
     vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+    
+    render_graph.build_barriers();
+    //render_graph.dump_barriers();
+    render_graph.set_api_image(backbuffer_id, image.get_image());
+    render_graph.set_callback(present_prepare_id, [](VkCommandBuffer cmd){});
+
+    render_graph.set_callback(backbuffer_subpass_id, [&](VkCommandBuffer cmd){
+      VkRenderPassBeginInfo renderpass_begin {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .pNext = nullptr,
+        .renderPass = main_subpass.api_renderpass(),
+        .framebuffer = framebuffers[image_index].api_framebuffer(),
+        .renderArea = {{0, 0}, swapchain_fmt().extent2D()},
+        .clearValueCount = 0,
+        .pClearValues = nullptr
+      };
+
+      vkCmdBeginRenderPass(cmd, &renderpass_begin, VK_SUBPASS_CONTENTS_INLINE);
+    
+      VkClearAttachment clear {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .colorAttachment = 0,
+        .clearValue {.color {0.f, 1.f, 0.f}}
+      };
+
+      VkClearRect clear_rect {
+        .rect {{0, 0}, swapchain_fmt().extent2D()},
+        .baseArrayLayer = 0,
+        .layerCount = 1
+      };
+
+      VkViewport vp {0.f, 0.f, (float)swapchain_fmt().width, (float)swapchain_fmt().height, 0.f, 1.f};
+
+      vkCmdClearAttachments(cmd, 1, &clear, 1, &clear_rect);
+      triangle_pipeline.bind(cmd);
+      vkCmdSetViewport(cmd, 0, 1, &vp);
+      vkCmdSetScissor(cmd, 0, 1, &clear_rect.rect);
+      vkCmdDraw(cmd, 3, 1, 0, 0);
+
+      imgui_ctx.render(cmd);
+      vkCmdEndRenderPass(cmd);
+    });
 
     VkCommandBufferBeginInfo begin_cmd {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    
     vkBeginCommandBuffer(cmd, &begin_cmd);
-    
-    gpu::Barrier to_attachment {
-      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-      {
-        gpu::ImageBarrier {image, VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}
-      }
-    };
-
-    to_attachment.flush(cmd);
-
-    VkRenderPassBeginInfo renderpass_begin {
-      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-      .pNext = nullptr,
-      .renderPass = main_subpass.api_renderpass(),
-      .framebuffer = framebuffers[image_index].api_framebuffer(),
-      .renderArea = {{0, 0}, swapchain_fmt().extent2D()},
-      .clearValueCount = 0,
-      .pClearValues = nullptr
-    };
-
-    vkCmdBeginRenderPass(cmd, &renderpass_begin, VK_SUBPASS_CONTENTS_INLINE);
-    
-    VkClearAttachment clear {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .colorAttachment = 0,
-      .clearValue {.color {0.f, 1.f, 0.f}}
-    };
-
-    VkClearRect clear_rect {
-      .rect {{0, 0}, swapchain_fmt().extent2D()},
-      .baseArrayLayer = 0,
-      .layerCount = 1
-    };
-
-    VkViewport vp {0.f, 0.f, (float)swapchain_fmt().width, (float)swapchain_fmt().height, 0.f, 1.f};
-
-    vkCmdClearAttachments(cmd, 1, &clear, 1, &clear_rect);
-    triangle_pipeline.bind(cmd);
-    vkCmdSetViewport(cmd, 0, 1, &vp);
-    vkCmdSetScissor(cmd, 0, 1, &clear_rect.rect);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
-
-    imgui_ctx.render(cmd);
-    vkCmdEndRenderPass(cmd);
-    
-    gpu::Barrier to_present {
-      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-      {
-        gpu::ImageBarrier {image, VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR}
-      }
-    };
-
-    to_present.flush(cmd);
-
+    render_graph.write_commands(cmd);
     vkEndCommandBuffer(cmd);
 
     VkSemaphore wait_sem = image_acquire_semaphores[frame_index];
@@ -184,7 +186,7 @@ private:
 
   const uint32_t frames_count = 0;
 
-  ImguiContext imgui_ctx;
+  gpu::ImguiContext imgui_ctx;
   std::vector<VkCommandBuffer> cmd_buffers;
   std::vector<gpu::Fence> submit_fences;
   std::vector<gpu::Semaphore> image_acquire_semaphores;
@@ -203,6 +205,10 @@ private:
     return pipeline;
   }
 
+  RenderGraph render_graph;
+  uint32_t backbuffer_id = 0;
+  uint32_t backbuffer_subpass_id = 0;
+  uint32_t present_prepare_id = 0;
 };
 
 int main() {

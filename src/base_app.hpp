@@ -8,8 +8,6 @@
 #include <SDL2/SDL_vulkan.h>
 #include <iostream>
 
-#include "imgui_context.hpp"
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                                        VkDebugUtilsMessageTypeFlagsEXT messageType,
                                                        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,

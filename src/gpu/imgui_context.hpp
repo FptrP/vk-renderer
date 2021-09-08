@@ -7,7 +7,9 @@
 #include <lib/imgui/imgui_impl_sdl.h>
 #include <lib/imgui/imgui_impl_vulkan.h>
 
-#include "gpu/driver.hpp"
+#include "driver.hpp"
+
+namespace gpu {
 
 struct ImguiContext {
   ImguiContext(SDL_Window *sdl_window, const gpu::Instance &instance, const gpu::Device &device, uint32_t image_count, const gpu::RenderSubpass &subpass)
@@ -91,5 +93,6 @@ private:
   }
 };
 
+}
 
 #endif
