@@ -87,6 +87,7 @@ namespace gpu {
   struct DeviceQueryInfo {
     bool complete = false;
     uint32_t queue_family_index = 0;
+    VkPhysicalDeviceProperties properties;
   };
 
   static DeviceQueryInfo pick_physical_device(VkPhysicalDevice device, const DeviceConfig &cfg) {
@@ -129,7 +130,7 @@ namespace gpu {
       queue_family = i;
     }
 
-    return {queue_found, queue_family};
+    return {queue_found, queue_family, pproperties};
   }
 
   Device::Device(VkInstance instance, const DeviceConfig &cfg) {
@@ -145,6 +146,7 @@ namespace gpu {
       query = pick_physical_device(pdev, cfg);
       if (query.complete) {
         physical_device = pdev;
+        properties = query.properties;
         break;
       }
     }
@@ -220,7 +222,7 @@ namespace gpu {
   }
   
   Device::Device(Device &&dev)
-    : physical_device {dev.physical_device}, logical_device {dev.logical_device},
+    : physical_device {dev.physical_device}, properties {dev.properties}, logical_device {dev.logical_device},
       allocator{dev.allocator}, queue_family_index {dev.queue_family_index},
       queue {dev.queue}
   {
@@ -239,6 +241,7 @@ namespace gpu {
 
   const Device &Device::operator=(Device &&dev) {
     std::swap(physical_device, dev.physical_device);
+    std::swap(properties, dev.properties);
     std::swap(logical_device, dev.logical_device);
     std::swap(allocator, dev.allocator);
     std::swap(queue_family_index, dev.queue_family_index);
@@ -348,11 +351,9 @@ namespace gpu {
     
     descriptor = ImageInfo {
       fmt.format,
+      VK_IMAGE_ASPECT_COLOR_BIT,
       swapchain_extent.width,
       swapchain_extent.height,
-      1,
-      1,
-      1
     };
   }
   

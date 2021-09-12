@@ -88,12 +88,17 @@ namespace gpu {
 
   struct ImageInfo {
     VkFormat format;
+    VkImageAspectFlags aspect = 0;
     uint32_t width = 0;
     uint32_t height = 0;
-    uint32_t depth = 0;
+    uint32_t depth = 1;
     uint32_t mip_levels = 1;
     uint32_t array_layers = 1;
 
+    ImageInfo() {}
+    ImageInfo(VkFormat fmt, VkImageAspectFlags aspect_flags, uint32_t w, uint32_t h)
+      : format {fmt}, aspect {aspect_flags}, width {w}, height {h} {}
+    
     const VkExtent3D extent3D() const { return {width, height, depth}; }
     const VkExtent2D extent2D() const { return {width, height}; }
   };
@@ -102,7 +107,7 @@ namespace gpu {
     Image(VkDevice dev, VmaAllocator alloc) : device {dev}, allocator {alloc} {}
     ~Image() { close(); }
 
-    void create(VkImageType type, VkFormat fmt, VkExtent3D ext, uint32_t mips, uint32_t layers, VkImageTiling tiling, VkImageUsageFlags usage);
+    void create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
     void create_reference(VkImage image, const ImageInfo &info);
 
     void close();
@@ -119,6 +124,7 @@ namespace gpu {
         allocation {o.allocation}, descriptor{o.descriptor}, views{std::move(o.views)}
     {
       o.handle = nullptr;
+      o.views.clear();
     }
 
     const Image &operator=(Image&& i) {

@@ -9,18 +9,20 @@
 #include "scene/scene.hpp"
 #include "base_app.hpp"
 #include "gpu/imgui_context.hpp"
-#include "framegraph.hpp"
-#include "subpasses.hpp"
+#include "framegraph/framegraph.hpp"
+#include "backbuffer_subpass.hpp"
+#include "frame_resources.hpp"
 
 struct App : SDLVulkanAppBase {
   App(uint32_t width, uint32_t height) 
     : SDLVulkanAppBase {width, height},
-      desc_alloc {gpu_device().new_descriptor_pool(3)},
-      main_subpass {gpu_device().api_device(), {swapchain_fmt().format}},
-      triangle_pipeline {init_pipeline(gpu_device().api_device(), main_subpass)},
+      desc_alloc {gpu_device().new_descriptor_pool((uint32_t)backbuffers().size())},
       cmdbuffer_pool {gpu_device().new_command_pool()},
       frames_count {(uint32_t)backbuffers().size()},
-      imgui_ctx {sdl_window(), gpu_instance(), gpu_device(), frames_count, main_subpass}
+      render_graph {},
+      frame_resources {render_graph},
+      frame_state {float(width), float(height)},
+      backbuffer_subpass {render_graph, get_context()}
   {
     const auto &dev = gpu_device();
     cmd_buffers = cmdbuffer_pool.allocate(frames_count);
@@ -31,31 +33,15 @@ struct App : SDLVulkanAppBase {
       submit_done_semaphores.push_back(dev.new_semaphore());
     }
 
-    auto ext = swapchain_fmt().extent3D();
-    ext.depth = 1;
-
-    for (auto &img : backbuffers()) {
-      gpu::ImageViewRange view {VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-      framebuffers.push_back(gpu::Framebuffer {gpu_device().api_device(), main_subpass, ext, {img.get_view(view)}});
-    }
-
-    imgui_ctx.create_fonts(gpu_device(), cmd_buffers[0]);
-
-    backbuffer_id = render_graph.create_image_desc(1, 1, VK_IMAGE_ASPECT_COLOR_BIT, "backbuffer_img", true);
-
-    BaseSubpass backbuffer_subpass;
-    backbuffer_subpass.write_color_attachment(backbuffer_id);
-    backbuffer_subpass_id = backbuffer_subpass.flush(render_graph);
-
-    PresentPrepareSubpass present_prepare {backbuffer_id};
-    present_prepare_id = present_prepare.flush(render_graph);
+    backbuffer_subpass.create_fonts(cmd_buffers[0]);
+    backbuffer_subpass.init_graph(frame_resources.backbuffer, desc_alloc);
   }
   
   void run() {
     bool quit = false; 
 
     while (!quit) {
-      imgui_ctx.new_frame();
+      backbuffer_subpass.new_frame();
       
       ImGui::Begin("Settings");
       ImGui::Text("Hello world!");
@@ -64,7 +50,8 @@ struct App : SDLVulkanAppBase {
 
       SDL_Event event;
       while (SDL_PollEvent(&event)) {
-        imgui_ctx.process_event(event);
+        frame_state.process_event(event);
+        backbuffer_subpass.process_event(event);
         
         if (event.type == SDL_QUIT) {
           quit = true;
@@ -84,6 +71,8 @@ struct App : SDLVulkanAppBase {
     VkSwapchainKHR swapchain = gpu_swapchain().api_swapchain();
     VkFence cmd_fence = submit_fences[frame_index];
 
+    render_graph.build_barriers();
+
     uint32_t image_index = 0;
     VKCHECK(vkAcquireNextImageKHR(device, swapchain, ~0ull, image_acquire_semaphores[frame_index], nullptr, &image_index)); 
 
@@ -92,48 +81,14 @@ struct App : SDLVulkanAppBase {
     vkWaitForFences(device, 1, &cmd_fence, VK_TRUE, ~0ull);
     submit_fences[frame_index].reset();
     vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-    
-    render_graph.build_barriers();
-    //render_graph.dump_barriers();
-    render_graph.set_api_image(backbuffer_id, image.get_image());
-    render_graph.set_callback(present_prepare_id, [](VkCommandBuffer cmd){});
+    desc_alloc.flip();
 
-    render_graph.set_callback(backbuffer_subpass_id, [&](VkCommandBuffer cmd){
-      VkRenderPassBeginInfo renderpass_begin {
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = nullptr,
-        .renderPass = main_subpass.api_renderpass(),
-        .framebuffer = framebuffers[image_index].api_framebuffer(),
-        .renderArea = {{0, 0}, swapchain_fmt().extent2D()},
-        .clearValueCount = 0,
-        .pClearValues = nullptr
-      };
+    auto ticks2 = SDL_GetTicks();
+    frame_state.update(frame_index, image_index, (ticks2 - ticks)/1000.f);
+    ticks = ticks2;
 
-      vkCmdBeginRenderPass(cmd, &renderpass_begin, VK_SUBPASS_CONTENTS_INLINE);
-    
-      VkClearAttachment clear {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .colorAttachment = 0,
-        .clearValue {.color {0.f, 1.f, 0.f}}
-      };
-
-      VkClearRect clear_rect {
-        .rect {{0, 0}, swapchain_fmt().extent2D()},
-        .baseArrayLayer = 0,
-        .layerCount = 1
-      };
-
-      VkViewport vp {0.f, 0.f, (float)swapchain_fmt().width, (float)swapchain_fmt().height, 0.f, 1.f};
-
-      vkCmdClearAttachments(cmd, 1, &clear, 1, &clear_rect);
-      triangle_pipeline.bind(cmd);
-      vkCmdSetViewport(cmd, 0, 1, &vp);
-      vkCmdSetScissor(cmd, 0, 1, &clear_rect.rect);
-      vkCmdDraw(cmd, 3, 1, 0, 0);
-
-      imgui_ctx.render(cmd);
-      vkCmdEndRenderPass(cmd);
-    });
+    render_graph.set_api_image(frame_resources.backbuffer, image.get_image());
+    backbuffer_subpass.update_graph(frame_state);
 
     VkCommandBufferBeginInfo begin_cmd {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &begin_cmd);
@@ -179,36 +134,22 @@ struct App : SDLVulkanAppBase {
 
 private:
   gpu::DescriptorPool desc_alloc;
-  gpu::RenderSubpass main_subpass;
-  gpu::Pipeline triangle_pipeline;
   gpu::CmdBufferPool cmdbuffer_pool;
-  std::vector<gpu::Framebuffer> framebuffers;
 
   const uint32_t frames_count = 0;
+  uint32_t frame_index = 0;
 
-  gpu::ImguiContext imgui_ctx;
   std::vector<VkCommandBuffer> cmd_buffers;
   std::vector<gpu::Fence> submit_fences;
   std::vector<gpu::Semaphore> image_acquire_semaphores;
-  std::vector<gpu::Semaphore> submit_done_semaphores;
+  std::vector<gpu::Semaphore> submit_done_semaphores;  
 
-  uint32_t frame_index = 0;
+  framegraph::RenderGraph render_graph;
+  FrameResources frame_resources;
+  FrameGlobal frame_state;
+  BackbufferSubpass backbuffer_subpass;
 
-  static gpu::Pipeline init_pipeline(VkDevice device, const gpu::RenderSubpass &subpass) {
-    gpu::ShaderModule vertex {device, "src/shaders/triangle/vert.spv", VK_SHADER_STAGE_VERTEX_BIT};
-    gpu::ShaderModule fragment {device, "src/shaders/triangle/frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT};
-
-    gpu::GraphicsPipelineDescriptor registers {1};
-
-    gpu::Pipeline pipeline {device};
-    pipeline.init_gfx(subpass, vertex, fragment, registers);
-    return pipeline;
-  }
-
-  RenderGraph render_graph;
-  uint32_t backbuffer_id = 0;
-  uint32_t backbuffer_subpass_id = 0;
-  uint32_t present_prepare_id = 0;
+  uint32_t ticks = 0;
 };
 
 int main() {

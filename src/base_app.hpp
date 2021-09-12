@@ -8,6 +8,8 @@
 #include <SDL2/SDL_vulkan.h>
 #include <iostream>
 
+#include "gpu_context.hpp"
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                                        VkDebugUtilsMessageTypeFlagsEXT messageType,
                                                        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -77,6 +79,10 @@ struct SDLVulkanAppBase {
   const gpu::ImageInfo swapchain_fmt() const { return api->swapchain.get_image_info(); }
 
   SDL_Window *sdl_window() { return window; }
+  
+  GpuContext get_context() {
+    return GpuContext {api->instance, api->device, api->swapchain, window};
+  }
   
 private:
 

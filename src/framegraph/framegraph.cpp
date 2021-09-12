@@ -1,6 +1,8 @@
 #include "framegraph.hpp"
 #include <iostream>
 
+namespace framegraph {
+
 static bool is_ro_access(VkAccessFlags flags) {
 
   const auto read_msk =
@@ -18,7 +20,7 @@ static bool is_ro_access(VkAccessFlags flags) {
   return (flags & read_msk);
 }
 
-static bool is_rw_access(VkAccessFlags flags) {
+static bool is_write_access(VkAccessFlags flags) {
   const auto rw_msk = 
     VK_ACCESS_SHADER_WRITE_BIT|
     VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|
@@ -149,9 +151,6 @@ void RenderGraph::build_barriers() {
       create_barrier(buffer_id, buf_state);
     }
   }
-
-  api_images.resize(images.size(), nullptr);
-  task_callbacks.resize(tasks.size());
 }
 
 void RenderGraph::create_barrier(uint32_t id, uint32_t mip, uint32_t layer, ImageSubresourceTrackingState &state) {
@@ -337,7 +336,9 @@ void RenderGraph::dump_barrier(uint32_t barrier_id) {
 void RenderGraph::write_commands(VkCommandBuffer cmd) {
   for (uint32_t i = 0; i < tasks.size(); i++) {
     write_barrier(barriers[i], cmd);
-    task_callbacks[i](cmd);
+    if (tasks[i].cb) {
+      tasks[i].cb(cmd);
+    }
   }
 }
 
@@ -391,4 +392,158 @@ void RenderGraph::reset_image_state(uint32_t image_id, uint32_t mip, uint32_t la
   state.current_access = state.prev_access = access;
   state.prev_stages = state.current_stages = stages;
   state.prev_layout = state.current_layout = layout;
+}
+
+static VkPipelineStageFlags get_pipeline_flags(VkShaderStageFlags stages) {
+  VkPipelineStageFlags pipeline_stages = 0;
+  if (stages & VK_SHADER_STAGE_VERTEX_BIT) {
+    pipeline_stages |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+  }
+  if (stages & VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT) {
+    pipeline_stages |= VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT;
+  }
+  if (stages & VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
+    pipeline_stages |= VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+  }
+  if (stages & VK_SHADER_STAGE_GEOMETRY_BIT) {
+    pipeline_stages |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
+  }
+  if (stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
+    pipeline_stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  }
+  return pipeline_stages;
+}
+
+SubpassDescriptor &SubpassDescriptor::sample_image(uint32_t image_id, VkShaderStageFlags stages) {
+  const auto &desc = graph.get_descriptor(image_id);
+  
+  for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
+    for (uint32_t mip = 0; mip < desc.mip_levels; mip++) {
+      ImageSubresource subres {image_id, mip, layer};
+      if (!images.count(subres)) {
+        continue;
+      }
+
+      const auto &state = images[subres];
+      
+      if (state.layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        throw std::runtime_error {"Incompatible image layout"};
+      }
+
+      if (is_write_access(state.mem_accesses)) {
+        throw std::runtime_error {"Incompatible access"};
+      }
+    }
+  }
+
+  auto pipeline_stages = get_pipeline_flags(stages);
+
+  for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
+    for (uint32_t mip = 0; mip < desc.mip_levels; mip++) {
+      ImageSubresource subres {image_id, mip, layer};
+      if (!images.count(subres)) {        
+        auto state = Task::ImageSubresourceAccess {
+          image_id,
+          mip,
+          layer,
+          pipeline_stages,
+          VK_ACCESS_SHADER_READ_BIT,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+
+        images[subres] = state;
+        continue;
+      }
+
+      auto &state = images[subres];
+      state.mem_accesses |= VK_ACCESS_SHADER_READ_BIT;
+      state.stages |= stages;
+    }
+  }
+
+  return *this;
+}
+
+SubpassDescriptor &SubpassDescriptor::use_color_attachment(uint32_t image_id) {
+  ImageSubresource subres {image_id, 0, 0};
+  
+  VkAccessFlags access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  VkPipelineStageFlags stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  auto layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+  if (images.count(subres)) {
+    auto &state = images[subres]; 
+    if (state.layout != layout || state.mem_accesses != access || state.stages != stages) {
+      throw std::runtime_error {"Incompatible color attachment usage"};
+    }
+  }
+
+  auto state = Task::ImageSubresourceAccess {
+    image_id,
+    0,
+    0,
+    stages,
+    access,
+    layout
+  };
+
+  images[subres] = state;
+  return *this;
+}
+
+SubpassDescriptor &SubpassDescriptor::use_depth_attachment(uint32_t image_id) {
+  ImageSubresource subres {image_id, 0, 0};
+  
+  VkAccessFlags access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+  VkPipelineStageFlags stages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+  auto layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+  if (images.count(subres)) {
+    auto &state = images[subres]; 
+    if (state.layout != layout || state.mem_accesses != access || state.stages != stages) {
+      throw std::runtime_error {"Incompatible depth attachment usage"};
+    }
+  }
+
+  auto state = Task::ImageSubresourceAccess {
+    image_id,
+    0,
+    0,
+    stages,
+    access,
+    layout
+  };
+
+  images[subres] = state;
+  return *this;
+}
+/*
+SubpassDescriptor &SubpassDescriptor::use_storage_image(uint32_t image_id, bool readonly) {
+  const auto &desc = graph.get_descriptor(image_id);
+
+  return *this;
+}
+
+SubpassDescriptor &SubpassDescriptor::use_storage_buffer(uint32_t buffer_id, bool readonly) {
+
+  return *this;
+}*/
+
+uint32_t SubpassDescriptor::flush_task() {
+  Task task;
+  task.name = name;
+  task.used_buffers.reserve(buffers.size());
+  task.used_images.reserve(images.size());
+
+  for (const auto &pair : images) {
+    task.used_images.push_back(pair.second);
+  }
+  
+  for (const auto &pair : buffers) {
+    task.used_buffers.push_back(pair.second);
+  }
+  
+  return graph.add_task(std::move(task));
+}
+
 }

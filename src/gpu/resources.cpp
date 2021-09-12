@@ -48,18 +48,18 @@ namespace gpu {
     vmaFlushAllocation(base, allocation, offset, size);
   }
 
-  void Image::create(VkImageType type, VkFormat fmt, VkExtent3D ext, uint32_t mips, uint32_t layers, VkImageTiling tiling, VkImageUsageFlags usage) {
+  void Image::create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
     close();
 
-    VkImageCreateInfo info {
+    VkImageCreateInfo image_info {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .pNext = nullptr,
       .flags = 0,
       .imageType = type,
-      .format = fmt,
-      .extent = ext,
-      .mipLevels = mips,
-      .arrayLayers = layers,
+      .format = info.format,
+      .extent = info.extent3D(),
+      .mipLevels = info.mip_levels,
+      .arrayLayers = info.array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = tiling,
       .usage = usage,
@@ -72,16 +72,8 @@ namespace gpu {
     VmaAllocationCreateInfo alloc_info {};
     alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-    descriptor = ImageInfo {
-      fmt,
-      ext.width,
-      ext.height,
-      ext.depth, 
-      mips,
-      layers
-    };
-
-    VKCHECK(vmaCreateImage(allocator, &info, &alloc_info, &handle, &allocation, nullptr));
+    descriptor = info;
+    VKCHECK(vmaCreateImage(allocator, &image_info, &alloc_info, &handle, &allocation, nullptr));
   }
   
   void Image::create_reference(VkImage image, const ImageInfo &info) {

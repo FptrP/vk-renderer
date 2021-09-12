@@ -11,6 +11,8 @@
 #include "shader.hpp"
 #include "cmd_buffers.hpp"
 #include "sync_primitive.hpp"
+#include "dynbuffer.hpp"
+#include "samplers.hpp"
 
 namespace gpu {
 
@@ -98,8 +100,14 @@ namespace gpu {
     VkPhysicalDevice api_physical_device() const { return physical_device; }
     uint32_t get_queue_family() const { return queue_family_index; }
 
+    template <typename T>
+    DynBuffer<T> create_dynbuffer(uint32_t elems) const { return DynBuffer<T> {allocator, properties.limits.minUniformBufferOffsetAlignment, elems}; }
+
+    Sampler create_sampler(VkSamplerCreateInfo info) const { return Sampler {logical_device, info}; }
+
   private:
     VkPhysicalDevice physical_device {nullptr};
+    VkPhysicalDeviceProperties properties;
     VkDevice logical_device {nullptr};
     VmaAllocator allocator {};
 

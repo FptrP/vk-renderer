@@ -328,6 +328,8 @@ namespace gpu {
       return *this;
     }
 
+    VkPipelineBindPoint get_type() const { return pipeline_type; }
+
   private:
     VkDevice base {nullptr};
     VkPipelineBindPoint pipeline_type;

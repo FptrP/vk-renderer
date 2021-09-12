@@ -61,7 +61,9 @@
     "concepts": "cpp",
     "iomanip": "cpp",
     "ranges": "cpp",
-    "stop_token": "cpp"
+    "stop_token": "cpp",
+    "cfloat": "cpp",
+    "climits": "cpp"
   },
   "cmake.configureOnOpen": false
 }

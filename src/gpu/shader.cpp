@@ -8,6 +8,7 @@
 #include "lib/spirv-cross/spirv_cross.hpp"
 
 #include <sstream>
+#include <initializer_list>
 
 namespace gpu {
   
@@ -16,7 +17,7 @@ namespace gpu {
     : device {base}
   {
     VkDescriptorPoolSize sizes[] {
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 128},
       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128},
       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 128},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 64},
@@ -164,7 +165,7 @@ namespace gpu {
     
     add_resources(compiler, resources.storage_images.data(), resources.storage_images.size(), VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     add_resources(compiler, resources.storage_buffers.data(), resources.storage_buffers.size(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    add_resources(compiler, resources.uniform_buffers.data(), resources.uniform_buffers.size(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    add_resources(compiler, resources.uniform_buffers.data(), resources.uniform_buffers.size(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_resources(compiler, resources.sampled_images.data(), resources.sampled_images.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     if (resources.push_constant_buffers.size() > 1) {
@@ -421,6 +422,14 @@ namespace gpu {
     gfx_info.layout = layout;
 
     VKCHECK(vkCreateGraphicsPipelines(base, nullptr, 1, &gfx_info, nullptr, &handle));
+  }
+
+  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets, std::initializer_list<uint32_t> offsets) {
+    vkCmdBindDescriptorSets(cmd, pipeline.get_type(), pipeline.get_pipeline_layout(), first_set, sets.size(), sets.begin(), offsets.size(), offsets.begin());
+  }
+  
+  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets) {
+    bind_descriptors(cmd, pipeline, first_set, sets, {});
   }
 
 }

@@ -36,7 +36,7 @@ add_executable(main
   src/gpu/driver.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
-  src/framegraph.cpp
+  src/framegraph/framegraph.cpp
   src/lib/volk.c
   ${spirv-cross-sources}
   ${imgui-sources}
