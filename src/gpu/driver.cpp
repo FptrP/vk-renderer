@@ -313,6 +313,12 @@ namespace gpu {
 
     VkPresentModeKHR mode = details.present_modes.at(0);
 
+    for (auto m : details.present_modes) {
+      if (m == VK_PRESENT_MODE_MAILBOX_KHR) {
+        mode = m;
+      }
+    }
+
     auto swapchain_extent = details.capabilities.currentExtent;
 
     if (swapchain_extent.width == UINT32_MAX) {

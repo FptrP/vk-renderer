@@ -343,6 +343,10 @@ void RenderGraph::write_commands(VkCommandBuffer cmd) {
 }
 
 void RenderGraph::write_barrier(const Barrier &barrier, VkCommandBuffer cmd) {
+  if (barrier.src == 0 && barrier.dst == 0) { //empty
+    return;
+  }
+  
   std::vector<VkImageMemoryBarrier> img_barriers;
   for (auto &ib : barrier.image_barriers) {
     if (!api_images[ib.image_id]) {

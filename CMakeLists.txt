@@ -4,6 +4,7 @@ project(cgtask3)
 
 find_package(SDL2 REQUIRED)
 find_package(Vulkan REQUIRED)
+#find_package(assimp REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -g -pthread")
@@ -32,13 +33,15 @@ set(imgui-sources
 
 add_executable(main 
   src/main.cpp
+  src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
   src/framegraph/framegraph.cpp
+  src/scene/scene.cpp
   src/lib/volk.c
   ${spirv-cross-sources}
   ${imgui-sources}
 )
-target_link_libraries(main dl ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES})
+target_link_libraries(main dl ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES} assimp)

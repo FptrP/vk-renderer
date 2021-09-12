@@ -23,10 +23,10 @@ namespace gpu {
       return *this;
     }
 
-    DescriptorWriter &bind_image(uint32_t binding, Image &image, VkImageAspectFlags flags, const Sampler &sampler) {
+    DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
       ImageViewRange range {};
       range.type = VK_IMAGE_VIEW_TYPE_2D;
-      range.range.aspectMask = flags;
+      range.range.aspectMask = image.get_info().aspect;
       range.range.baseArrayLayer = 0;
       range.range.baseMipLevel = 0;
       range.range.layerCount = 1;
@@ -74,12 +74,14 @@ namespace gpu {
         VkWriteDescriptorSet w {};
         w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         w.dstSet = target;
-        w.dstBinding = buffers[i].binding;
-        w.descriptorType = buffers[i].type;
+        w.dstBinding = images[i].binding;
+        w.descriptorType = images[i].type;
         w.descriptorCount = 1;
         w.pImageInfo = &image_info[i];
         writes.push_back(w);
       }
+
+      vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
 
   private:
