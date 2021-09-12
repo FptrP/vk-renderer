@@ -100,7 +100,7 @@ namespace gpu {
 
     VkAttachmentReference depth_reference {};
     if (depth_attachment.has_value()) {
-      depth_reference = {(uint32_t)attachments.size(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+      depth_reference = {(uint32_t)attachments.size() - 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
     }
 
     VkSubpassDescription subpass {};

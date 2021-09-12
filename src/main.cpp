@@ -11,6 +11,7 @@
 #include "gpu/imgui_context.hpp"
 #include "framegraph/framegraph.hpp"
 #include "backbuffer_subpass.hpp"
+#include "gbuffer_subpass.hpp"
 #include "frame_resources.hpp"
 
 struct App : SDLVulkanAppBase {
@@ -21,7 +22,8 @@ struct App : SDLVulkanAppBase {
       frames_count {(uint32_t)backbuffers().size()},
       render_graph {},
       frame_resources {render_graph},
-      frame_state {float(width), float(height)},
+      frame_state {gpu_device(), width, height, frames_count},
+      gbuffer_subpass {get_context(), frame_state},
       backbuffer_subpass {render_graph, get_context()}
   {
     const auto &dev = gpu_device();
@@ -33,8 +35,12 @@ struct App : SDLVulkanAppBase {
       submit_done_semaphores.push_back(dev.new_semaphore());
     }
 
+    frame_state.bind_images(render_graph, frame_resources);
+    
     backbuffer_subpass.create_fonts(cmd_buffers[0]);
-    backbuffer_subpass.init_graph(frame_resources.backbuffer, desc_alloc);
+    
+    gbuffer_subpass.init_graph(frame_resources, frame_state, render_graph, gpu_device(), desc_alloc);
+    backbuffer_subpass.init_graph(frame_resources, frame_state, desc_alloc);
   }
   
   void run() {
@@ -72,6 +78,7 @@ struct App : SDLVulkanAppBase {
     VkFence cmd_fence = submit_fences[frame_index];
 
     render_graph.build_barriers();
+    //render_graph.dump_barriers();
 
     uint32_t image_index = 0;
     VKCHECK(vkAcquireNextImageKHR(device, swapchain, ~0ull, image_acquire_semaphores[frame_index], nullptr, &image_index)); 
@@ -147,6 +154,7 @@ private:
   framegraph::RenderGraph render_graph;
   FrameResources frame_resources;
   FrameGlobal frame_state;
+  GbufferSubpass gbuffer_subpass;
   BackbufferSubpass backbuffer_subpass;
 
   uint32_t ticks = 0;

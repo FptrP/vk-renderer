@@ -115,9 +115,10 @@ namespace gpu {
 
     VkImage get_image() const { return handle; }
     VkExtent3D get_extent() const { return descriptor.extent3D(); }
-
+    VkFormat get_fmt() const { return descriptor.format; }
     uint32_t get_mip_levels() const { return descriptor.mip_levels; }
     uint32_t get_array_layers() const { return descriptor.array_layers; }
+    const ImageInfo &get_info() const { return descriptor; }
 
     Image(Image &&o) 
       : device {o.device}, allocator {o.allocator}, handle {o.handle},

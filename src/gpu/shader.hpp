@@ -196,8 +196,6 @@ namespace gpu {
       info.pTessellationState = nullptr;
     }
 
-  private:
-
     VkPipelineInputAssemblyStateCreateInfo assembly {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .pNext = nullptr,

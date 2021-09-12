@@ -32,6 +32,7 @@ set(imgui-sources
 
 add_executable(main 
   src/main.cpp
+  src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
   src/gpu/resources.cpp
