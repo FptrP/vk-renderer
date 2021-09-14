@@ -31,7 +31,7 @@ struct GBuffer {
   void create_images(uint32_t width, uint32_t height) {
     auto tiling = VK_IMAGE_TILING_OPTIMAL;
     gpu::ImageInfo albedo_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
-    gpu::ImageInfo normal_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+    gpu::ImageInfo normal_info {VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
     gpu::ImageInfo mat_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
     gpu::ImageInfo depth_info {VK_FORMAT_D16_UNORM, VK_IMAGE_ASPECT_DEPTH_BIT, width, height};
 
@@ -59,10 +59,12 @@ struct GBuffer {
 
 struct FrameGlobal {
   FrameGlobal(gpu::Device &device, uint32_t width, uint32_t height, uint32_t max_frames_in_f) 
-    : gbuffer {device}, frames_in_flight {max_frames_in_f}
+    : gbuffer {device}, scene {device}, frames_in_flight {max_frames_in_f}
   {
     projection = glm::perspective(glm::radians(60.f), float(width)/float(height), 0.01f, 10.f);
     gbuffer.create_images(width, height);
+    scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
+    scene.gen_buffers(device);
   }
   
   void process_event(const SDL_Event& e) {
@@ -87,7 +89,8 @@ struct FrameGlobal {
   }
 
   GBuffer gbuffer;
-  
+  scene::Scene scene;
+
   uint32_t frame_index;
   uint32_t backbuffer_index;
   uint32_t frames_in_flight;

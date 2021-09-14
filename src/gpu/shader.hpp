@@ -174,6 +174,12 @@ namespace gpu {
       dynamic_states.push_back(VK_DYNAMIC_STATE_SCISSOR);
     }
     
+    GraphicsPipelineDescriptor &set_vertex_input(std::initializer_list<VkVertexInputBindingDescription> bindings, std::initializer_list<VkVertexInputAttributeDescription> attribs) {
+      vertex_bindings.insert(vertex_bindings.begin(), bindings);
+      vertex_attributes.insert(vertex_attributes.begin(), attribs);
+      return *this;
+    }
+
     void set_params(VkGraphicsPipelineCreateInfo &info) {
       blend_state.pAttachments = attachments.data();
       dynamic_state.dynamicStateCount = dynamic_states.size();
@@ -181,6 +187,11 @@ namespace gpu {
 
       viewport_state.pViewports = &empty_vp;
       viewport_state.pScissors = &empty_scissor;
+
+      vertex_state.vertexBindingDescriptionCount = vertex_bindings.size();
+      vertex_state.pVertexBindingDescriptions = vertex_bindings.data();
+      vertex_state.vertexAttributeDescriptionCount = vertex_attributes.size();
+      vertex_state.pVertexAttributeDescriptions = vertex_attributes.data();
 
       info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
       info.pNext = nullptr;
@@ -291,6 +302,8 @@ namespace gpu {
 
     std::vector<VkPipelineColorBlendAttachmentState> attachments {};
     std::vector<VkDynamicState> dynamic_states;
+    std::vector<VkVertexInputBindingDescription> vertex_bindings;
+    std::vector<VkVertexInputAttributeDescription> vertex_attributes;
   };
 
   using ShaderDescriptorLayouts = std::unordered_map<uint32_t, VkDescriptorSetLayout>;

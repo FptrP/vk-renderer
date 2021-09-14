@@ -56,6 +56,10 @@ struct BackbufferSubpass {
     framegraph::SubpassDescriptor subpass {graph, "BackbufferSubpass"};
     subpass.use_color_attachment(backbuffer_image_id);
     subpass.sample_image(res_desc.gbuf_depth, VK_SHADER_STAGE_FRAGMENT_BIT);
+    subpass.sample_image(res_desc.gbuf_normal, VK_SHADER_STAGE_FRAGMENT_BIT);
+    subpass.sample_image(res_desc.gbuf_albedo, VK_SHADER_STAGE_FRAGMENT_BIT);
+    subpass.sample_image(res_desc.gbuf_material, VK_SHADER_STAGE_FRAGMENT_BIT);
+
     backbuffer_subpass_id = subpass.flush_task();
 
     framegraph::Task prepare_present;
@@ -84,7 +88,7 @@ struct BackbufferSubpass {
       auto set = pool.allocate_set(pipeline.get_descriptor_set_layout(0));
       
       gpu::DescriptorWriter writer {set};
-      writer.bind_image(0, state.gbuffer.depth, sampler);
+      writer.bind_image(0, state.gbuffer.normal, sampler);
       writer.write(context.device.api_device());
       
       VkRenderPassBeginInfo renderpass_begin {

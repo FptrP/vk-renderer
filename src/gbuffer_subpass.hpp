@@ -106,7 +106,14 @@ struct GbufferSubpass {
       VkViewport vp {0.f, 0.f, (float)clear_rect.rect.extent.width, (float)clear_rect.rect.extent.height, 0.f, 1.f};
       vkCmdSetViewport(cmd, 0, 1, &vp);
       vkCmdSetScissor(cmd, 0, 1, &clear_rect.rect);
-      vkCmdDraw(cmd, 3, 1, 0, 0);
+      
+      auto vbuf = state.scene.get_vertex_buffer().get_api_buffer();
+      auto ibuf = state.scene.get_index_buffer().get_api_buffer();
+      const auto &mesh = state.scene.get_meshes().at(0);
+      uint64_t voffset = 0;
+      vkCmdBindVertexBuffers(cmd, 0, 1, &vbuf, &voffset);
+      vkCmdBindIndexBuffer(cmd, ibuf, 0, VK_INDEX_TYPE_UINT32);
+      vkCmdDrawIndexed(cmd, mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       vkCmdEndRenderPass(cmd);
     });
 
@@ -124,6 +131,28 @@ private:
     gpu::ShaderModule fragment {ctx.device.api_device(), "src/shaders/gbuf/default_frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT};
 
     gpu::GraphicsPipelineDescriptor registers {3};
+
+    registers.set_vertex_input({{0, sizeof(scene::Vertex), VK_VERTEX_INPUT_RATE_VERTEX}}, {
+      {
+        .location = 0,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(scene::Vertex, pos)
+      },
+      {
+        .location = 1,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(scene::Vertex, norm)
+      },
+      {
+        .location = 2,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(scene::Vertex, uv)
+      },
+    });
+
     registers.depth_stencil.depthTestEnable = VK_TRUE;
     registers.depth_stencil.depthWriteEnable = VK_TRUE;
 

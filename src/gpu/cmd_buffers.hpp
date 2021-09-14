@@ -54,6 +54,20 @@ namespace gpu {
       return result;
     }
 
+    VkCommandBuffer allocate() {
+      VkCommandBufferAllocateInfo info {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1
+      };
+
+      VkCommandBuffer result;
+      VKCHECK(vkAllocateCommandBuffers(device, &info, &result));
+      return result;
+    }
+
   private:
     VkDevice device;
     VkCommandPool pool {VK_NULL_HANDLE};

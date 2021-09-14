@@ -4,7 +4,7 @@ project(cgtask3)
 
 find_package(SDL2 REQUIRED)
 find_package(Vulkan REQUIRED)
-#find_package(assimp REQUIRED)
+find_package(assimp REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -g -pthread")
@@ -32,6 +32,8 @@ set(imgui-sources
   ${imgui-dir}/imgui.cpp)
 
 add_executable(main 
+  src/rendergraph/resources.cpp
+  src/rendergraph/rendergraph.cpp
   src/main.cpp
   src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp

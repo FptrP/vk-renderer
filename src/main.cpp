@@ -14,6 +14,8 @@
 #include "gbuffer_subpass.hpp"
 #include "frame_resources.hpp"
 
+#include "rendergraph/rendergraph.hpp"
+
 struct App : SDLVulkanAppBase {
   App(uint32_t width, uint32_t height) 
     : SDLVulkanAppBase {width, height},
@@ -161,7 +163,41 @@ private:
 };
 
 int main() {
-  App app {1280, 720};
-  app.run();
+  //App app {1280, 720};
+  //app.run();
+  rendergraph::TrackingState state;
+  rendergraph::ResourceInput input_0;
+  input_0.images = {
+    {{0, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
+    {{1, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
+    {{2, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
+    {{3, 0, 0}, {VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}}
+  };
+  
+  rendergraph::ResourceInput input_1;
+  input_1.images = {
+    {{0, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
+    {{1, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
+    {{2, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
+    {{3, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
+  };
+
+  input_1.buffers = {
+    {10, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT}}
+  };
+
+  rendergraph::ResourceInput input_2;
+  input_2.images = {
+    {{3, 0, 0}, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}
+  };
+  input_2.buffers = {
+    {10, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT}}
+  };
+
+  state.add_input(input_0);
+  state.add_input(input_1);
+  state.add_input(input_2);
+  state.flush();
+  state.dump_barriers();
   return 0;
 }

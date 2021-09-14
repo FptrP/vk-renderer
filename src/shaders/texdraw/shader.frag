@@ -11,6 +11,7 @@ float linearize_depth(float d,float zNear,float zFar)
 }
 
 void main() {
-  float depth = linearize_depth(texture(target_tex, in_uv).r, 0.01, 10.0);
-  out_color = vec4(depth, depth, depth, depth);
+  //float depth = linearize_depth(texture(target_tex, in_uv).r, 0.01, 10.0);
+  //out_color = vec4(depth, depth, depth, depth);
+  out_color = texture(target_tex, in_uv);
 }
