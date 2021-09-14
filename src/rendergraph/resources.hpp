@@ -38,6 +38,7 @@ namespace rendergraph {
   struct BaseBufferID {};
 
   struct ImageDescriptor {
+    VkImageType type;
     VkFormat format;
     VkImageAspectFlags aspect = 0;
     VkImageTiling tiling;
@@ -48,8 +49,31 @@ namespace rendergraph {
     uint32_t depth = 1;
     uint32_t mip_levels = 1;
     uint32_t array_layers = 1;
+
+    gpu::ImageInfo get_vk_info() const {
+      return {
+        format,
+        aspect,
+        width,
+        height,
+        depth,
+        mip_levels,
+        array_layers
+      };
+    }
   };
   
+  struct ImageRef {
+    ImageRef(std::size_t id, gpu::ImageViewRange view) : hash {id}, range {view} {}
+
+    std::size_t get_hash() const { return hash; }
+    const gpu::ImageViewRange &get_range() const { return range; }
+  
+  private:
+    std::size_t hash;
+    gpu::ImageViewRange range;
+  };
+
   struct BufferDescriptor {
     uint64_t size;
     VkBufferUsageFlags usage;
@@ -70,6 +94,8 @@ namespace rendergraph {
     return index.hash_code();
   }
 
+  std::size_t get_backbuffer_hash();
+
   struct ImageSubresourceState {
     VkPipelineStageFlags stages = 0;
     VkAccessFlags access = 0;
@@ -84,6 +110,22 @@ namespace rendergraph {
   struct Image {
     gpu::Image vk_image;
     std::unique_ptr<ImageSubresourceState[]> input_state;
+
+    Image(gpu::Image &&img) : vk_image {std::move(img)} {
+      const auto &desc = vk_image.get_info();
+      input_state.reset(new ImageSubresourceState[desc.mip_levels * desc.array_layers]); 
+    }
+
+    ImageSubresourceState &get_external_state(ImageSubresource subres) {
+      const auto &desc = vk_image.get_info();
+      return input_state[desc.mip_levels * subres.layer + subres.mip];
+    }
+
+    const ImageSubresourceState &get_external_state(ImageSubresource subres) const {
+      const auto &desc = vk_image.get_info();
+      return input_state[desc.mip_levels * subres.layer + subres.mip];
+    }
+
   };
 
   struct Buffer {
@@ -132,12 +174,26 @@ namespace rendergraph {
     bool is_empty() const { return buffer_barriers.empty() && image_barriers.empty(); }
   };
 
+  struct GraphResources {
+    std::unordered_map<std::size_t, uint32_t> image_remap;
+    std::unordered_map<std::size_t, uint32_t> buffer_remap;
+    std::vector<Image> images;
+    std::vector<Buffer> buffers;
+  };
+
   struct TrackingState {
     void add_input(const ResourceInput &input);
     void flush();
     void dump_barriers();
     void clear();
+    bool is_dirty() const { return dirty; }
+
+    const std::vector<Barrier> &get_barriers() { return barriers; }
+    
+    void set_external_state(GraphResources &resources);
+
   private:
+    bool dirty = false;
     uint32_t index = 0;
     std::map<std::size_t, BufferTrackingState> buffers;
     std::map<ImageSubresource, ImageTrackingState> images;

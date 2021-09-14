@@ -166,42 +166,92 @@ RES_IMAGE_ID(GbufferAlbedo);
 RES_IMAGE_ID(GbufferNormal);
 RES_IMAGE_ID(GbufferMaterial);
 RES_IMAGE_ID(GbufferDepth);
-RES_IMAGE_ID(Backbuffer);
 
 struct CBData {
   std::string name;
 };
 
+struct RGApp : SDLVulkanAppBase {
+  RGApp(uint32_t w, uint32_t h) : SDLVulkanAppBase {w, h}, render_graph {gpu_device(), gpu_swapchain()} {}
+
+  void init() {
+    auto [width, height] = swapchain_fmt().extent2D();
+
+    render_graph.add_task<CBData>("Gbuffer", 
+      [&](CBData &data, rendergraph::RenderGraphBuilder &builder) {
+        rendergraph::ImageDescriptor desc {
+          VK_IMAGE_TYPE_2D,
+          VK_FORMAT_R8G8B8A8_SRGB,
+          VK_IMAGE_ASPECT_COLOR_BIT,
+          VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT,
+          width, height, 1, 1, 1
+        };
+        
+        builder.create_image<GbufferAlbedo>(desc);
+        builder.create_image<GbufferNormal>(desc);
+        builder.create_image<GbufferMaterial>(desc);
+
+        desc.format = VK_FORMAT_D16_UNORM;
+        desc.aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+
+        builder.create_image<GbufferDepth>(desc);
+
+        builder.use_color_attachment<GbufferAlbedo>();
+        builder.use_color_attachment<GbufferNormal>();
+        builder.use_color_attachment<GbufferMaterial>();
+        builder.use_depth_attachment<GbufferDepth>();
+
+        data.name = "Gbuffer";
+      },
+      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
+        std::cout << "In " << data.name << "\n";
+      });
+
+    render_graph.add_task<CBData>("Backbuffer", 
+      [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
+        builder.sample_image<GbufferAlbedo>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.sample_image<GbufferNormal>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.sample_image<GbufferDepth>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.sample_image<GbufferMaterial>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        data.name = "Backbuffer";
+      },
+      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
+        std::cout << "In " << data.name << "\n";
+      });
+    
+    render_graph.add_task<CBData>("Somename",
+      [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
+        builder.prepare_backbuffer();
+        data.name = "PreparePresent";
+      },
+      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
+        std::cout << "In " << data.name << "\n";
+      });
+  }
+
+  void submit() {
+    render_graph.submit();
+  }
+
+private:
+  rendergraph::RenderGraph render_graph;
+}; 
+
 int main() {
-  rendergraph::RenderGraph render_graph {};
-
-  render_graph.add_task<CBData>("Gbuffer", 
-    [&](CBData &data, rendergraph::RenderGraphBuilder &builder) {
-      builder.use_color_attachment<GbufferAlbedo>();
-      builder.use_color_attachment<GbufferNormal>();
-      builder.use_color_attachment<GbufferMaterial>();
-      builder.use_depth_attachment<GbufferDepth>();
-
-      data.name = "Gbuffer";
-    },
-    [=](CBData &data) {
-      std::cout << "In " << data.name << "\n";
-    });
-
-  render_graph.add_task<CBData>("Backbuffer", 
-    [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
-      builder.use_color_attachment<Backbuffer>();
-      builder.sample_image<GbufferAlbedo>(VK_SHADER_STAGE_FRAGMENT_BIT);
-      builder.sample_image<GbufferNormal>(VK_SHADER_STAGE_FRAGMENT_BIT);
-      builder.sample_image<GbufferDepth>(VK_SHADER_STAGE_FRAGMENT_BIT);
-      builder.sample_image<GbufferMaterial>(VK_SHADER_STAGE_FRAGMENT_BIT);
-      data.name = "Backbuffer";
-    },
-    [=](CBData &data) {
-      std::cout << "In " << data.name << "\n";
-    });
-
-  render_graph.submit();
-
+  RGApp app {800, 600};
+  app.init();
+  
+  bool quit = false;
+  while (!quit) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_QUIT) {
+        quit = true;
+      }
+    } 
+    app.submit(); 
+  }
   return 0;
 }

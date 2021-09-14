@@ -160,7 +160,7 @@ private:
 
     std::vector<gpu::Framebuffer> result;
     for (auto &img : backbuffers) {
-      gpu::ImageViewRange view {VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+      gpu::ImageViewRange view {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
       result.push_back(gpu::Framebuffer {ctx.device.api_device(), subpass, ext, {img.get_view(view)}});
     }
     return result;

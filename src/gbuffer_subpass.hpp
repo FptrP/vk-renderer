@@ -26,10 +26,10 @@ struct GbufferSubpass {
         subpass,
         state.gbuffer.get_ext_layers(),
         {
-          state.gbuffer.albedo.get_view({VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}}),
-          state.gbuffer.normal.get_view({VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}}),
-          state.gbuffer.material.get_view({VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}}),
-          state.gbuffer.depth.get_view({VK_IMAGE_VIEW_TYPE_2D, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}})
+          state.gbuffer.albedo.get_view({VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}),
+          state.gbuffer.normal.get_view({VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}),
+          state.gbuffer.material.get_view({VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}),
+          state.gbuffer.depth.get_view({VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1})
         }
       },
       default_pipeline {build_pipeline(ctx, subpass)},

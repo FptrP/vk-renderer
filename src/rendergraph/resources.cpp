@@ -20,7 +20,7 @@ namespace rendergraph {
     return (flags & read_msk);
   }
 
-  static bool is_write_access(VkAccessFlags flags) {
+  /*static bool is_write_access(VkAccessFlags flags) {
     const auto rw_msk = 
       VK_ACCESS_SHADER_WRITE_BIT|
       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|
@@ -29,6 +29,11 @@ namespace rendergraph {
       VK_ACCESS_MEMORY_WRITE_BIT;
   
     return (flags & rw_msk);
+  }*/
+
+  std::size_t get_backbuffer_hash() {
+    struct BackbufferID : BaseImageID {};
+    return get_image_hash<BackbufferID>();
   }
 
   static bool merge_states(ImageTrackingState &state, const ImageSubresourceState &access) {
@@ -79,6 +84,7 @@ namespace rendergraph {
       track.barrier_id = index;
       track.src = track.dst;
       track.dst = state;
+      dirty = true;
     }
 
     for (auto [buf_id, state] : input.buffers) {
@@ -114,8 +120,8 @@ namespace rendergraph {
       track.barrier_id = index;
       track.src = track.dst;
       track.dst = state;
+      dirty = true;
     }
-
     index++;
   }
 
@@ -154,13 +160,30 @@ namespace rendergraph {
       barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
       track.src = track.dst;
     }
+
+    dirty = false;
   }
 
   void TrackingState::clear() {
+    dirty = false;
     index = 0;
     buffers.clear();
     images.clear();
     barriers.clear();
+  }
+
+  void TrackingState::set_external_state(GraphResources &resources) {
+    for (auto [subres, state] : images) {
+      auto index = resources.image_remap.at(subres.image_hash);
+      auto &image = resources.images.at(index);
+      image.get_external_state(subres) = state.dst;
+    }
+
+    for (auto [buf_id, state] : buffers) {
+      auto index = resources.buffer_remap.at(buf_id);
+      auto &buff = resources.buffers.at(index);
+      buff.input_state = state.dst;
+    }
   }
 
   #define PRINT_FLAG(flag_name) if (flags & flag_name) { \

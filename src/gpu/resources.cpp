@@ -111,7 +111,7 @@ namespace gpu {
       .viewType = range.type,
       .format = descriptor.format,
       .components = {},
-      .subresourceRange = range.range
+      .subresourceRange = {descriptor.aspect, range.base_mip, range.mips_count, range.base_layer, range.layers_count}
     };
 
     VkImageView view {nullptr};

@@ -34,6 +34,7 @@ set(imgui-sources
 add_executable(main 
   src/rendergraph/resources.cpp
   src/rendergraph/rendergraph.cpp
+  src/rendergraph/gpu_ctx.cpp
   src/main.cpp
   src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp

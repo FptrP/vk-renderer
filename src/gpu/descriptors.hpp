@@ -26,11 +26,10 @@ namespace gpu {
     DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
       ImageViewRange range {};
       range.type = VK_IMAGE_VIEW_TYPE_2D;
-      range.range.aspectMask = image.get_info().aspect;
-      range.range.baseArrayLayer = 0;
-      range.range.baseMipLevel = 0;
-      range.range.layerCount = 1;
-      range.range.levelCount = image.get_mip_levels();
+      range.base_layer = 0;
+      range.base_mip = 0;
+      range.layers_count = 1;
+      range.mips_count = image.get_mip_levels();
 
       auto view = image.get_view(range);
       images.push_back({binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, view, sampler.api_sampler()});

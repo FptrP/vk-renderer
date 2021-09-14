@@ -10,15 +10,17 @@
 namespace gpu {
   struct ImageViewRange {
     VkImageViewType type;
-    VkImageSubresourceRange range;
+    uint32_t base_mip;
+    uint32_t mips_count;
+    uint32_t base_layer;
+    uint32_t layers_count;
 
     bool operator==(const ImageViewRange &o) const {
       return (type == o.type)
-        && (range.aspectMask == o.range.aspectMask)
-        && (range.baseArrayLayer == o.range.baseArrayLayer)
-        && (range.baseMipLevel == o.range.baseMipLevel)
-        && (range.layerCount == o.range.layerCount)
-        && (range.levelCount == o.range.levelCount); 
+        && (base_mip == o.base_mip)
+        && (mips_count == o.mips_count)
+        && (base_layer == o.base_layer)
+        && (layers_count == o.layers_count); 
     }
   };
 }
@@ -30,11 +32,10 @@ namespace std {
     size_t operator()(const gpu::ImageViewRange &key) const {
       size_t h = 0;
       h ^= size_t(key.type);
-      h ^= size_t(key.range.aspectMask) << 1;
-      h ^= key.range.baseArrayLayer << 2;
-      h ^= key.range.baseMipLevel << 3;
-      h ^= key.range.layerCount << 4;
-      h ^= key.range.levelCount << 5;
+      h ^= key.base_layer << 2;
+      h ^= key.layers_count << 3;
+      h ^= key.base_mip << 4;
+      h ^= key.mips_count << 5;
       return h;  
     }
   };
@@ -99,6 +100,10 @@ namespace gpu {
     ImageInfo(VkFormat fmt, VkImageAspectFlags aspect_flags, uint32_t w, uint32_t h)
       : format {fmt}, aspect {aspect_flags}, width {w}, height {h} {}
     
+    ImageInfo(VkFormat fmt, VkImageAspectFlags aspect_flags, uint32_t w, uint32_t h, uint32_t d, uint32_t mips, uint32_t layers)
+      : format {fmt}, aspect {aspect_flags}, width {w}, height {h}, depth {d}, mip_levels{mips}, array_layers{layers} {}
+
+
     const VkExtent3D extent3D() const { return {width, height, depth}; }
     const VkExtent2D extent2D() const { return {width, height}; }
   };
