@@ -136,6 +136,7 @@ namespace rendergraph {
     void add_input(const ResourceInput &input);
     void flush();
     void dump_barriers();
+    void clear();
   private:
     uint32_t index = 0;
     std::map<std::size_t, BufferTrackingState> buffers;

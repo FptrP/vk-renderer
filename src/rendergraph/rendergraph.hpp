@@ -8,9 +8,14 @@
 namespace rendergraph {
   struct RenderGraph;
 
-  struct RenderGraphBuilder {
-    //RenderGraphBuilder(RenderGraph &rg) : graph {rg} {}
+  struct GraphResources {
+    std::unordered_map<std::size_t, uint32_t> image_remap;
+    std::unordered_map<std::size_t, uint32_t> buffer_remap;
+    std::vector<Image> images;
+    std::vector<Buffer> buffers;
+  };
 
+  struct RenderGraphBuilder {
     template <typename ImageRes>
     std::size_t use_color_attachment(uint32_t mip = 0, uint32_t layer = 0) {
       auto hash = get_image_hash<ImageRes>();
@@ -32,6 +37,8 @@ namespace rendergraph {
       return hash;
     }
 
+    const ResourceInput &get_input() const { return input; }
+
   private:
     //RenderGraph &graph;
     ResourceInput input;
@@ -39,70 +46,52 @@ namespace rendergraph {
     void use_color_attachment(std::size_t image_id, uint32_t mip, uint32_t layer);
     void use_depth_attachment(std::size_t image_id, uint32_t mip, uint32_t layer);
     void sample_image(std::size_t image_id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
-
-  };
-
-
-  /*struct GpuContext;
-  struct GpuCmdContext;
   
-  struct RenderGraphBuilder;
+    friend struct RenderGraph;
+  };
 
   struct BaseTask {
-    virtual void create(GpuContext &, RenderGraphBuilder &) = 0;
-    virtual void write_commands(GpuContext &, GpuCmdContext &) = 0;
+    BaseTask(const std::string &task_name) : name {task_name} {}
+    virtual void write_commands() = 0;
     virtual ~BaseTask() {}
-  };
 
-  struct GpuContext {
-
-  };
-  
-  struct GpuCmdContext {
-
+    std::string name;
   };
 
   template <typename TaskData>
-  using TaskRunCB = std::function<void (TaskData &, GpuContext &, GpuCmdContext &)>;
+  using TaskRunCB = std::function<void (TaskData &)>;
 
   template <typename TaskData>
-  using TaskCreateCB = std::function<void (TaskData &, GpuContext &, RenderGraphBuilder &)>;
+  using TaskCreateCB = std::function<void (TaskData &, RenderGraphBuilder &)>;
 
   template <typename TaskData>
   struct Task : BaseTask {
+    Task(const std::string &name) : BaseTask {name} {}
+
     TaskData data;
-    TaskCreateCB<TaskData> create_cb;
     TaskRunCB<TaskData> callback;
 
-    void write_commands(GpuContext &ctx, GpuCmdContext &cmd) override {
-      if (callback) {
-        callback(data, ctx, cmd);
-      }
+    void write_commands() override {
+      callback(data);
     }
-
-    void create(GpuContext &ctx, RenderGraphBuilder &builder) override {
-      if (create_cb) {
-        create_cb(data, ctx, builder);
-      }
-    }
-
   };
-
-  struct GraphResources {
-    std::unordered_map<std::size_t, uint32_t> image_remap;
-    std::unordered_map<std::size_t, uint32_t> buffer_remap;
-    std::vector<Image> images;
-    std::vector<Buffer> buffers;
-  };
-
-  
 
   struct RenderGraph {
     
+    template <typename TaskData>
+    void add_task(const std::string &name, TaskCreateCB<TaskData> create_cb, TaskRunCB<TaskData> run_cb) {
+      RenderGraphBuilder builder {};
+      std::unique_ptr<Task<TaskData>> ptr {new Task<TaskData> {name}};
+      create_cb(ptr->data, builder);
+      ptr->callback = run_cb;
+      tasks.push_back(std::move(ptr));
+      tracking_state.add_input(builder.input);
+    }
 
-    void build();
+    void submit();
   private:
     GraphResources resources;
+    TrackingState tracking_state;
 
     std::vector<std::unique_ptr<BaseTask>> tasks;
     std::vector<Barrier> barriers;
@@ -113,6 +102,11 @@ namespace rendergraph {
 
     friend struct RenderGraphBuilder;
   };
+
+  /*struct GpuContext;
+  struct GpuCmdContext;
+  
+  struct RenderGraphBuilder;
 
 
   struct RenderGraphBuilder {

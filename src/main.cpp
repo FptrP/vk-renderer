@@ -162,42 +162,46 @@ private:
   uint32_t ticks = 0;
 };
 
+RES_IMAGE_ID(GbufferAlbedo);
+RES_IMAGE_ID(GbufferNormal);
+RES_IMAGE_ID(GbufferMaterial);
+RES_IMAGE_ID(GbufferDepth);
+RES_IMAGE_ID(Backbuffer);
+
+struct CBData {
+  std::string name;
+};
+
 int main() {
-  //App app {1280, 720};
-  //app.run();
-  rendergraph::TrackingState state;
-  rendergraph::ResourceInput input_0;
-  input_0.images = {
-    {{0, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
-    {{1, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
-    {{2, 0, 0}, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}},
-    {{3, 0, 0}, {VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}}
-  };
-  
-  rendergraph::ResourceInput input_1;
-  input_1.images = {
-    {{0, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
-    {{1, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
-    {{2, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
-    {{3, 0, 0}, {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},
-  };
+  rendergraph::RenderGraph render_graph {};
 
-  input_1.buffers = {
-    {10, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT}}
-  };
+  render_graph.add_task<CBData>("Gbuffer", 
+    [&](CBData &data, rendergraph::RenderGraphBuilder &builder) {
+      builder.use_color_attachment<GbufferAlbedo>();
+      builder.use_color_attachment<GbufferNormal>();
+      builder.use_color_attachment<GbufferMaterial>();
+      builder.use_depth_attachment<GbufferDepth>();
 
-  rendergraph::ResourceInput input_2;
-  input_2.images = {
-    {{3, 0, 0}, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}
-  };
-  input_2.buffers = {
-    {10, {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT}}
-  };
+      data.name = "Gbuffer";
+    },
+    [=](CBData &data) {
+      std::cout << "In " << data.name << "\n";
+    });
 
-  state.add_input(input_0);
-  state.add_input(input_1);
-  state.add_input(input_2);
-  state.flush();
-  state.dump_barriers();
+  render_graph.add_task<CBData>("Backbuffer", 
+    [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
+      builder.use_color_attachment<Backbuffer>();
+      builder.sample_image<GbufferAlbedo>(VK_SHADER_STAGE_FRAGMENT_BIT);
+      builder.sample_image<GbufferNormal>(VK_SHADER_STAGE_FRAGMENT_BIT);
+      builder.sample_image<GbufferDepth>(VK_SHADER_STAGE_FRAGMENT_BIT);
+      builder.sample_image<GbufferMaterial>(VK_SHADER_STAGE_FRAGMENT_BIT);
+      data.name = "Backbuffer";
+    },
+    [=](CBData &data) {
+      std::cout << "In " << data.name << "\n";
+    });
+
+  render_graph.submit();
+
   return 0;
 }

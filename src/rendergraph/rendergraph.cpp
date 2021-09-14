@@ -87,9 +87,14 @@ namespace rendergraph {
     }
   }
 
-  /*  
-  void RenderGraph::build() {
+  
+  void RenderGraph::submit() {
+    tracking_state.flush();
+    tracking_state.dump_barriers();
 
-  }*/
+    for (auto &task : tasks) {
+      task->write_commands();
+    }
+  }
 
 }

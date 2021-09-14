@@ -156,6 +156,13 @@ namespace rendergraph {
     }
   }
 
+  void TrackingState::clear() {
+    index = 0;
+    buffers.clear();
+    images.clear();
+    barriers.clear();
+  }
+
   #define PRINT_FLAG(flag_name) if (flags & flag_name) { \
     if (!first) std::cout << "|"; \
     std::cout << #flag_name ; \
