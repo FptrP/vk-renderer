@@ -104,6 +104,24 @@ namespace rendergraph {
     throw std::runtime_error {"Incompatible access for backbuffer"};
   }
 
+  ImageRef RenderGraphBuilder::use_backbuffer_attachment() {
+    auto hash = get_backbuffer_hash();
+    ImageSubresourceState state {
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+    ImageSubresource subres {hash, 0, 0};
+
+    if (!input.images.count(subres)) {
+      input.images[subres] = state;
+      return {hash, gpu::ImageViewRange{VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
+    }
+
+    throw std::runtime_error {"Incompatible access for backbuffer"};
+    return {hash, {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
+  }
+
   void RenderGraphBuilder::create_img(std::size_t hash, const ImageDescriptor &desc) {
     if (!resources.image_remap.count(hash)) {
       auto index = resources.images.size();

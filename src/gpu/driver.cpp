@@ -300,7 +300,9 @@ namespace gpu {
     return details;
   }
 
-  Swapchain::Swapchain(VkDevice device, VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkExtent2D window, VkImageUsageFlags image_usage) {
+  Swapchain::Swapchain(VkDevice device, VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkExtent2D window, VkImageUsageFlags image_usage)
+    : base {device}
+  {
     auto details = query_swapchain_info(physical_device, surface);
 
     VkSurfaceFormatKHR fmt = details.formats.at(0);

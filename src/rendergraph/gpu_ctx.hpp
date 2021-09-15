@@ -32,6 +32,7 @@ namespace rendergraph {
       : device {dev}, 
         swapchain {swp},
         vk_backbuffers {device.get_swapchain_images(swapchain)},
+        backbuffers_count { swapchain.get_images_count()},
         frames_count {(uint32_t)vk_backbuffers.size()},
         cmdbuffer_pool {device.new_command_pool()},
         desc_pool {device.new_descriptor_pool(frames_count)},
@@ -63,11 +64,14 @@ namespace rendergraph {
     gpu::Device &get_device() { return device; }
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return desc_pool.allocate_set(layout); }
 
+    uint32_t get_frames_count() const { return frames_count; }
+    uint32_t get_backbuffers_count() const { return backbuffers_count;}
   private:
     gpu::Device &device;
     gpu::Swapchain &swapchain;
 
     std::vector<gpu::Image> vk_backbuffers;
+    uint32_t backbuffers_count = 0;
     uint32_t frames_count = 0;
 
     gpu::CmdBufferPool cmdbuffer_pool;

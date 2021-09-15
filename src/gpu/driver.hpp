@@ -132,6 +132,12 @@ namespace gpu {
       return *this;
     }
 
+    uint32_t get_images_count() const {
+      uint32_t count;
+      vkGetSwapchainImagesKHR(base, handle, &count, nullptr);
+      return count;
+    }
+
     VkSwapchainKHR api_swapchain() const { return handle; }
     const ImageInfo &get_image_info() const { return descriptor; }
   private:

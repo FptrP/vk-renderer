@@ -37,6 +37,7 @@ namespace rendergraph {
     }
 
     void prepare_backbuffer();
+    ImageRef use_backbuffer_attachment();
 
     const ResourceInput &get_input() const { return input; }
 
@@ -55,6 +56,9 @@ namespace rendergraph {
     }
 
     gpu::Device &get_gpu() { return gpu.get_device(); }
+    
+    uint32_t get_frames_count() const { return gpu.get_frames_count(); }
+    uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}
 
   private:
     GraphResources &resources;
@@ -81,6 +85,11 @@ namespace rendergraph {
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
     
     gpu::Device &get_gpu() const { return gpu.get_device(); }
+
+    uint32_t get_frames_count() const { return gpu.get_frames_count(); }
+    uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}
+    uint32_t get_frame_index() const { return gpu.get_frame_index(); }
+    uint32_t get_backbuffer_index() const { return gpu.get_backbuf_index(); }
 
   private:
     GraphResources &resources;

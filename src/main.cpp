@@ -15,6 +15,7 @@
 #include "frame_resources.hpp"
 
 #include "rendergraph/rendergraph.hpp"
+#include "backbuffer_subpass2.hpp"
 
 struct App : SDLVulkanAppBase {
   App(uint32_t width, uint32_t height) 
@@ -172,64 +173,18 @@ struct CBData {
 };
 
 struct RGApp : SDLVulkanAppBase {
-  RGApp(uint32_t w, uint32_t h) : SDLVulkanAppBase {w, h}, render_graph {gpu_device(), gpu_swapchain()} {}
-
-  void init() {
-    auto [width, height] = swapchain_fmt().extent2D();
-
-    render_graph.add_task<CBData>("Gbuffer", 
-      [&](CBData &data, rendergraph::RenderGraphBuilder &builder) {
-        rendergraph::ImageDescriptor desc {
-          VK_IMAGE_TYPE_2D,
-          VK_FORMAT_R8G8B8A8_SRGB,
-          VK_IMAGE_ASPECT_COLOR_BIT,
-          VK_IMAGE_TILING_OPTIMAL,
-          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT,
-          width, height, 1, 1, 1
-        };
-        
-        builder.create_image<GbufferAlbedo>(desc);
-        builder.create_image<GbufferNormal>(desc);
-        builder.create_image<GbufferMaterial>(desc);
-
-        desc.format = VK_FORMAT_D16_UNORM;
-        desc.aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-        desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
-
-        builder.create_image<GbufferDepth>(desc);
-
-        builder.use_color_attachment<GbufferAlbedo>();
-        builder.use_color_attachment<GbufferNormal>();
-        builder.use_color_attachment<GbufferMaterial>();
-        builder.use_depth_attachment<GbufferDepth>();
-
-        data.name = "Gbuffer";
-      },
-      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
-        std::cout << "In " << data.name << "\n";
-      });
-
-    render_graph.add_task<CBData>("Backbuffer", 
-      [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
-        builder.sample_image<GbufferAlbedo>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        builder.sample_image<GbufferNormal>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        builder.sample_image<GbufferDepth>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        builder.sample_image<GbufferMaterial>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        data.name = "Backbuffer";
-      },
-      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
-        std::cout << "In " << data.name << "\n";
-      });
-    
-    render_graph.add_task<CBData>("Somename",
-      [&](CBData &data, rendergraph::RenderGraphBuilder &builder){
-        builder.prepare_backbuffer();
-        data.name = "PreparePresent";
-      },
-      [=](CBData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd) {
-        std::cout << "In " << data.name << "\n";
-      });
+  RGApp(uint32_t w, uint32_t h) 
+    : SDLVulkanAppBase {w, h}, render_graph {gpu_device(), gpu_swapchain()},
+      scene {gpu_device()}
+  {
+    scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
+    scene.gen_buffers(gpu_device());
   }
+  ~RGApp() {
+    vkDeviceWaitIdle(gpu_device().api_device());
+  }
+
+  rendergraph::RenderGraph &get_graph() { return render_graph; }
 
   void submit() {
     render_graph.submit();
@@ -237,12 +192,21 @@ struct RGApp : SDLVulkanAppBase {
 
 private:
   rendergraph::RenderGraph render_graph;
+  scene::Scene scene;
+  scene::Camera camera;
+
+  glm::mat4 projection;
+  glm::mat4 view_proj;
 }; 
 
 int main() {
   RGApp app {800, 600};
-  app.init();
-  
+  scene::Camera camera;
+  glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
+  glm::mat4 mvp;
+
+  add_backbuffer_subpass(app.get_graph(), mvp);
+
   bool quit = false;
   while (!quit) {
     SDL_Event event;
@@ -250,7 +214,11 @@ int main() {
       if (event.type == SDL_QUIT) {
         quit = true;
       }
-    } 
+      camera.process_event(event);
+    }
+
+    camera.move(1.f/30.f);
+    mvp = projection * camera.get_view_mat();
     app.submit(); 
   }
   return 0;

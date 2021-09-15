@@ -65,7 +65,7 @@ namespace rendergraph {
   
   struct ImageRef {
     ImageRef(std::size_t id, gpu::ImageViewRange view) : hash {id}, range {view} {}
-
+    ImageRef() {}
     std::size_t get_hash() const { return hash; }
     const gpu::ImageViewRange &get_range() const { return range; }
   
