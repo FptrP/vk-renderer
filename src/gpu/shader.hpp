@@ -355,7 +355,7 @@ namespace gpu {
     const Pipeline &operator=(const Pipeline&) = delete;
   };
 
-
+  void clear_color_attachments();
   
 }
 

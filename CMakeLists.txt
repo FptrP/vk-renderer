@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
 project(cgtask3)
 
@@ -42,6 +42,7 @@ add_executable(main
   src/gpu/driver.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
+  src/gpu/pipelines.cpp
   src/framegraph/framegraph.cpp
   src/scene/scene.cpp
   src/lib/volk.c

@@ -83,7 +83,7 @@ namespace rendergraph {
     VkImageView get_view(const ImageRef &ref);
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
-    
+    VkDescriptorSet allocate_set(const gpu::Pipeline &pipeline, uint32_t index) { return gpu.allocate_set(pipeline.get_descriptor_set_layout(index)); }
     gpu::Device &get_gpu() const { return gpu.get_device(); }
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }

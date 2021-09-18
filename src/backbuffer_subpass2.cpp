@@ -60,7 +60,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, glm::mat4 &mvp) {
 
       *data.ubo->get_mapped_ptr(backbuf_id) = ShaderData {mvp, glm::vec4{1, 0, 0, 0}};
       
-      auto set = resources.allocate_set(data.pipeline->get_descriptor_set_layout(0));
+      auto set = resources.allocate_set(*data.pipeline, 0);
       gpu::DescriptorWriter writer {set};
       writer.bind_dynbuffer(0, *data.ubo);
       writer.write(resources.get_gpu().api_device());
