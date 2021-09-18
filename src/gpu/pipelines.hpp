@@ -186,9 +186,9 @@ namespace gpu {
     
     VkDescriptorSetLayout get_layout(uint32_t index) const;
     VkPipelineLayout get_pipeline_layout() const;
-
+    
     bool is_attached() const { return pool != nullptr; }
-
+    bool has_program() const { return program_id.has_value(); };
   protected:
     PipelinePool *pool {nullptr};
     std::optional<uint32_t> program_id {};
@@ -218,6 +218,7 @@ namespace gpu {
 
     VkPipeline get_pipeline();
     VkRenderPass get_renderpass();
+    const RenderSubpassDesc &get_renderpass_desc() const;
 
     bool operator==(const GraphicsPipeline &p) const {
       return pool == p.pool 
@@ -226,6 +227,10 @@ namespace gpu {
         && p.render_subpass == render_subpass
         && p.regs_index == regs_index;
     }
+
+    bool has_vertex_input() const { return vertex_input.has_value(); }
+    bool has_render_subpass() const { return render_subpass.has_value(); }
+    bool has_registers() const { return regs_index.has_value(); }
 
   private:
     std::optional<uint32_t> vertex_input;

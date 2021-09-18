@@ -7,26 +7,6 @@
 
 namespace rendergraph {
 
-  /*struct GpuContext {
-    
-    gpu::Image create_image(const ImageDescriptor &desc);
-    gpu::Buffer create_buffer(const BufferDescriptor &desc);
-
-    template <typename T>
-    gpu::DynBuffer<T> create_dynbuffer(); 
-
-    VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return pool.allocate_set(layout); }
-
-  private:
-    gpu::Device &device;
-    gpu::DescriptorPool &pool;
-    
-    uint32_t frames_count;
-    uint32_t backbuffers_count;
-    uint32_t frame_index;
-    uint32_t backbuffer_index;
-  };*/
-
   struct GpuState {
     GpuState(gpu::Device &dev, gpu::Swapchain &swp)
       : device {dev}, 
@@ -36,7 +16,7 @@ namespace rendergraph {
         frames_count {(uint32_t)vk_backbuffers.size()},
         cmdbuffer_pool {device.new_command_pool()},
         desc_pool {device.new_descriptor_pool(frames_count)},
-        cmd_buffers {cmdbuffer_pool.allocate(frames_count)}
+        cmd_buffers {cmdbuffer_pool.allocate_contexts(frames_count)}
     {
       submit_fences.reserve(frames_count);
       image_acquire_semaphores.reserve(frames_count);
@@ -54,7 +34,7 @@ namespace rendergraph {
     void begin();
     void submit();
 
-    VkCommandBuffer get_cmdbuff() const { return cmd_buffers[frame_index]; }
+    gpu::CmdContext &get_cmdbuff() { return cmd_buffers[frame_index]; }
     
     uint32_t get_frame_index() const { return frame_index; }
     uint32_t get_backbuf_index() const { return backbuf_index; }
@@ -77,7 +57,7 @@ namespace rendergraph {
     gpu::CmdBufferPool cmdbuffer_pool;
     gpu::DescriptorPool desc_pool;
 
-    std::vector<VkCommandBuffer> cmd_buffers;
+    std::vector<gpu::CmdContext> cmd_buffers;
     std::vector<gpu::Fence> submit_fences;
     std::vector<gpu::Semaphore> image_acquire_semaphores;
     std::vector<gpu::Semaphore> submit_done_semaphores;  

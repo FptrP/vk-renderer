@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <cassert>
+#include <cstring>
 
 #include "lib/spirv-cross/spirv_glsl.hpp"
 #include "lib/spirv-cross/spirv_cross.hpp"
@@ -566,6 +567,10 @@ namespace gpu {
     return pool->get_renderpass(*this);
   }
 
+  const RenderSubpassDesc &GraphicsPipeline::get_renderpass_desc() const {
+    return pool->get_subpass_desc(render_subpass.value());
+  }
+
   void GraphicsPipeline::set_vertex_input(const VertexInput &vinput) {
     vertex_input = pool->get_vinput_index(vinput);
   }
@@ -580,71 +585,23 @@ namespace gpu {
 
 
   bool operator==(const VkVertexInputBindingDescription &l, const VkVertexInputBindingDescription &r) {
-    return
-      l.binding == r.binding &&
-      l.inputRate == r.inputRate &&
-      l.stride == r.stride;
+    return !std::memcmp(&l, &r, sizeof(l));
   }
 
   bool operator==(const VkVertexInputAttributeDescription &l, const VkVertexInputAttributeDescription &r) {
-    return
-      l.binding == r.binding &&
-      l.format == r.format && 
-      l.location == r.location &&
-      l.offset == r.offset;
+    return !std::memcmp(&l, &r, sizeof(l));
   }
   
   bool operator==(const VkPipelineInputAssemblyStateCreateInfo &l, const VkPipelineInputAssemblyStateCreateInfo &r) {
-    return
-      l.sType == r.sType &&
-      l.flags == r.flags &&
-      l.pNext == r.pNext &&
-      l.topology == r.topology &&
-      l.primitiveRestartEnable == r.primitiveRestartEnable;
+    return !std::memcmp(&l, &r, sizeof(l));
   }
-  
-  #define CMP(n) res &= (l. n == r. n)
-  #define CMP2(n) CMP(front. n); CMP(back. n)
 
   bool operator==(const VkPipelineRasterizationStateCreateInfo &l, const VkPipelineRasterizationStateCreateInfo &r) {
-    bool res = true;
-    CMP(sType);
-    CMP(pNext);
-    CMP(flags);
-    CMP(depthClampEnable);
-    CMP(rasterizerDiscardEnable);
-    CMP(polygonMode);
-    CMP(cullMode);
-    CMP(frontFace);
-    CMP(depthBiasEnable);
-    CMP(depthBiasConstantFactor);
-    CMP(depthBiasClamp);
-    CMP(depthBiasSlopeFactor);
-    CMP(lineWidth);
-    return res;   
+    return !std::memcmp(&l, &r, sizeof(l));
   }
   
   bool operator==(const VkPipelineDepthStencilStateCreateInfo &l, const VkPipelineDepthStencilStateCreateInfo &r) {
-    bool res = true;
-    CMP(sType);
-    CMP(pNext);
-    CMP(flags);
-    CMP(depthTestEnable);
-    CMP(depthWriteEnable);
-    CMP(depthCompareOp);
-    CMP(depthBoundsTestEnable);
-    CMP(stencilTestEnable);
-    CMP(minDepthBounds);
-    CMP(maxDepthBounds);
-    
-    CMP2(failOp);
-    CMP2(passOp);
-    CMP2(depthFailOp);
-    CMP2(compareOp);
-    CMP2(compareMask);
-    CMP2(writeMask);
-    CMP2(reference);
-    return res;
+    return !std::memcmp(&l, &r, sizeof(l));
   }
 
 }

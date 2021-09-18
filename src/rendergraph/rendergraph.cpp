@@ -146,7 +146,11 @@ namespace rendergraph {
 
     throw std::runtime_error {"Attemp to recreate buffer"};
   }
-
+  
+  const gpu::ImageInfo &RenderGraphBuilder::get_image_info(std::size_t hash) {
+    auto index = resources.image_remap.at(hash);
+    return resources.images.at(index).vk_image.get_info();
+  }
   
   RenderGraph::RenderGraph(gpu::Device &device, gpu::Swapchain &swapchain)
     : gpu {device, swapchain}
@@ -168,15 +172,16 @@ namespace rendergraph {
     gpu.begin();
     remap_backbuffer();
 
-    auto api_cmd = gpu.get_cmdbuff(); 
+    auto &api_cmd = gpu.get_cmdbuff(); 
     auto &barriers = tracking_state.get_barriers();
     RenderResources res {resources, gpu};
 
     for (uint32_t i = 0; i < tasks.size(); i++) {
       if (barriers.size() > i) {
-        write_barrier(barriers[i], api_cmd);
+        write_barrier(barriers[i], api_cmd.get_command_buffer());
       }
       tasks[i]->write_commands(res, api_cmd);
+      api_cmd.end_renderpass(); //to be sure about barriers
     }
 
     gpu.submit();

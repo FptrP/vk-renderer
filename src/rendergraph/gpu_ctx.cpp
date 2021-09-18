@@ -4,7 +4,7 @@ namespace rendergraph {
 
   void GpuState::begin() {
 
-    VkCommandBuffer cmd = cmd_buffers[frame_index]; 
+    auto &cmd = cmd_buffers[frame_index]; 
     VkFence cmd_fence = submit_fences[frame_index];
 
     VKCHECK(vkAcquireNextImageKHR(
@@ -14,23 +14,24 @@ namespace rendergraph {
       image_acquire_semaphores[frame_index],
       nullptr, &backbuf_index));
 
-    vkWaitForFences(device.api_device(), 1, &cmd_fence, VK_TRUE, ~0ull);
+    vkWaitForFences(device.api_device(), 1, &cmd_fence, VK_TRUE, UINT64_MAX);
     submit_fences[frame_index].reset();
-    vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+    vkResetCommandBuffer(cmd.get_command_buffer(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
     desc_pool.flip();
 
-    VkCommandBufferBeginInfo begin_cmd {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &begin_cmd);
+    cmd.begin();
+    cmd.clear_resources();
   }
   
   void GpuState::submit() {
-    VkCommandBuffer cmd = cmd_buffers[frame_index];
+    auto &cmd = cmd_buffers[frame_index];
+    auto api_cmd = cmd.get_command_buffer();
     VkFence cmd_fence = submit_fences[frame_index];
     
     auto api_swapchain = swapchain.api_swapchain();
     auto queue = device.api_queue();
 
-    vkEndCommandBuffer(cmd);
+    cmd.end();
 
     VkSemaphore wait_sem = image_acquire_semaphores[frame_index];
     VkSemaphore signal_sem = submit_done_semaphores[frame_index];
@@ -43,7 +44,7 @@ namespace rendergraph {
       .pWaitSemaphores = &wait_sem,
       .pWaitDstStageMask = &wait_mask,
       .commandBufferCount = 1,
-      .pCommandBuffers = &cmd,
+      .pCommandBuffers = &api_cmd,
       .signalSemaphoreCount = 1,
       .pSignalSemaphores = &signal_sem
     };

@@ -221,7 +221,7 @@ int main() {
   glm::mat4 mvp;
 
   add_backbuffer_subpass(app.get_graph(), pool, mvp);
-
+  
   bool quit = false;
   while (!quit) {
     SDL_Event event;
@@ -229,6 +229,7 @@ int main() {
       if (event.type == SDL_QUIT) {
         quit = true;
       }
+
       camera.process_event(event);
     }
 

@@ -55,6 +55,12 @@ namespace rendergraph {
       return hash; 
     }
 
+    template <typename ImageRes>
+    const gpu::ImageInfo &get_image_info() {
+      auto hash = get_image_hash<ImageRes>();
+      return get_image_info(hash);
+    }
+
     gpu::Device &get_gpu() { return gpu.get_device(); }
     
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
@@ -71,6 +77,7 @@ namespace rendergraph {
 
     void create_img(std::size_t hash, const ImageDescriptor &desc);
     void create_buf(std::size_t hash, const BufferDescriptor &desc);
+    const gpu::ImageInfo &get_image_info(std::size_t hash);
 
     friend struct RenderGraph;
   };
@@ -98,14 +105,14 @@ namespace rendergraph {
 
   struct BaseTask {
     BaseTask(const std::string &task_name) : name {task_name} {}
-    virtual void write_commands(RenderResources &, VkCommandBuffer) = 0;
+    virtual void write_commands(RenderResources &, gpu::CmdContext &) = 0;
     virtual ~BaseTask() {}
 
     std::string name;
   };
 
   template <typename TaskData>
-  using TaskRunCB = std::function<void (TaskData &, RenderResources &, VkCommandBuffer)>;
+  using TaskRunCB = std::function<void (TaskData &, RenderResources &, gpu::CmdContext &)>;
 
   template <typename TaskData>
   using TaskCreateCB = std::function<void (TaskData &, RenderGraphBuilder &)>;
@@ -117,7 +124,7 @@ namespace rendergraph {
     TaskData data;
     TaskRunCB<TaskData> callback;
 
-    void write_commands(RenderResources &resources, VkCommandBuffer cmd) override {
+    void write_commands(RenderResources &resources, gpu::CmdContext &cmd) override {
       callback(data, resources, cmd);
     }
   };

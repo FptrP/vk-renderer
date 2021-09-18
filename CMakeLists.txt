@@ -43,6 +43,7 @@ add_executable(main
   src/gpu/pipelines.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
+  src/gpu/cmd_buffers.cpp
   src/framegraph/framegraph.cpp
   src/scene/scene.cpp
   src/lib/volk.c
