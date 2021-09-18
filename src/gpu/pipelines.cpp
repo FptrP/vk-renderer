@@ -530,6 +530,8 @@ namespace gpu {
     info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     info.pNext = nullptr;
     info.flags = 0;
+    info.stageCount = (uint32_t)stages.size();
+    info.pStages = stages.data();
     info.pVertexInputState = &vertex_state;
     info.pInputAssemblyState = &regs.assembly;
     info.pRasterizationState = &regs.rasterization;
@@ -564,6 +566,17 @@ namespace gpu {
     return pool->get_renderpass(*this);
   }
 
+  void GraphicsPipeline::set_vertex_input(const VertexInput &vinput) {
+    vertex_input = pool->get_vinput_index(vinput);
+  }
+  
+  void GraphicsPipeline::set_registers(const Registers &regs) {
+    regs_index = pool->get_registers_index(regs);
+  }
+  
+  void GraphicsPipeline::set_rendersubpass(const RenderSubpassDesc &subpass) {
+    render_subpass = pool->get_subpass_index(subpass);
+  }
 
 
   bool operator==(const VkVertexInputBindingDescription &l, const VkVertexInputBindingDescription &r) {

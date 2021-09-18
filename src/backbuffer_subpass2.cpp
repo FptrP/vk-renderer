@@ -9,8 +9,7 @@ struct ShaderData {
 };
 
 struct SubpassData {
-  std::unique_ptr<gpu::RenderSubpass> renderpass;
-  std::unique_ptr<gpu::Pipeline> pipeline;
+  gpu::GraphicsPipeline pipeline;
   std::vector<std::unique_ptr<gpu::Framebuffer>> framebuffers;
 
   std::unique_ptr<gpu::DynBuffer<ShaderData>> ubo;
@@ -32,45 +31,46 @@ static gpu::Pipeline init_pipeline(VkDevice device, const gpu::RenderSubpass &su
   return pipeline;
 }
 
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, glm::mat4 &mvp) {
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol, glm::mat4 &mvp) {
   graph.add_task<SubpassData>("BackbufSubpass",
     [&](SubpassData &data, rendergraph::RenderGraphBuilder &builder){
       data.backbuff_view = builder.use_backbuffer_attachment();
       data.ubo.reset(new gpu::DynBuffer<ShaderData> {builder.get_gpu().create_dynbuffer<ShaderData>(builder.get_backbuffers_count())});
+      data.pipeline.attach(ppol);
     },
     [=, &mvp](SubpassData &data, rendergraph::RenderResources &resources, VkCommandBuffer cmd){
+      
+      const auto &desc = resources.get_image(data.backbuff_view.get_hash()).get_info();
+      auto &dev = resources.get_gpu();
 
-      if (!data.init) {
-        const auto &desc = resources.get_image(data.backbuff_view.get_hash()).get_info();
-        auto &dev = resources.get_gpu();
     
-        data.renderpass.reset(new gpu::RenderSubpass {dev.api_device(), {desc.format}});
-        data.pipeline.reset(new gpu::Pipeline {init_pipeline(dev.api_device(), *data.renderpass)});
+      if (!data.init) {
+        data.pipeline.set_program("triangle");
+        data.pipeline.set_registers({});
+        data.pipeline.set_vertex_input({});
+
         data.framebuffers.resize(resources.get_backbuffers_count());
         data.init = true;
       }
-      
+      data.pipeline.set_rendersubpass({false, {desc.format}});
+
       auto backbuf_id = resources.get_backbuffer_index();
 
       if (!data.framebuffers[backbuf_id]) {
-        auto &dev = resources.get_gpu();
-        const auto &desc = resources.get_image(data.backbuff_view.get_hash()).get_info();
-        data.framebuffers[backbuf_id].reset(new gpu::Framebuffer {dev.api_device(), *data.renderpass, {desc.width, desc.height, 1}, {resources.get_view(data.backbuff_view)}});
+        data.framebuffers[backbuf_id].reset(new gpu::Framebuffer {dev.api_device(), data.pipeline.get_renderpass(), {desc.width, desc.height, 1}, {resources.get_view(data.backbuff_view)}});
       }
 
       *data.ubo->get_mapped_ptr(backbuf_id) = ShaderData {mvp, glm::vec4{1, 0, 0, 0}};
       
-      auto set = resources.allocate_set(*data.pipeline, 0);
+      auto set = resources.allocate_set(data.pipeline.get_layout(0));
       gpu::DescriptorWriter writer {set};
       writer.bind_dynbuffer(0, *data.ubo);
       writer.write(resources.get_gpu().api_device());
 
-      const auto &desc = resources.get_image(data.backbuff_view.get_hash()).get_info();
-
       VkRenderPassBeginInfo renderpass_begin {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .pNext = nullptr,
-        .renderPass = data.renderpass->api_renderpass(),
+        .renderPass = data.pipeline.get_renderpass(),
         .framebuffer = data.framebuffers[backbuf_id]->api_framebuffer(),
         .renderArea = {{0, 0}, desc.extent2D()},
         .clearValueCount = 0,
@@ -94,8 +94,9 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, glm::mat4 &mvp) {
 
       vkCmdBeginRenderPass(cmd, &renderpass_begin, VK_SUBPASS_CONTENTS_INLINE);
       vkCmdClearAttachments(cmd, 1, &clear, 1, &clear_rect);
-      data.pipeline->bind(cmd);
-      gpu::bind_descriptors(cmd, *data.pipeline, 0, {set}, {(uint32_t)data.ubo->get_offset(backbuf_id)});
+      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.get_pipeline());
+      uint32_t offs = data.ubo->get_offset(backbuf_id);
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.get_pipeline_layout(), 0, 1, &set, 1, &offs);
       vkCmdSetViewport(cmd, 0, 1, &viewport);
       vkCmdSetScissor(cmd, 0, 1, &scissors);
       vkCmdDraw(cmd, 3, 1, 0, 0);

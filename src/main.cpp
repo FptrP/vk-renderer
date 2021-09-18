@@ -13,6 +13,7 @@
 #include "backbuffer_subpass.hpp"
 #include "gbuffer_subpass.hpp"
 #include "frame_resources.hpp"
+#include "gpu/pipelines.hpp"
 
 #include "rendergraph/rendergraph.hpp"
 #include "backbuffer_subpass2.hpp"
@@ -174,7 +175,7 @@ struct CBData {
 
 struct RGApp : SDLVulkanAppBase {
   RGApp(uint32_t w, uint32_t h) 
-    : SDLVulkanAppBase {w, h}, render_graph {gpu_device(), gpu_swapchain()},
+    : SDLVulkanAppBase {w, h}, pipelines {gpu_device().api_device()}, render_graph {gpu_device(), gpu_swapchain()},
       scene {gpu_device()}
   {
     scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
@@ -190,7 +191,10 @@ struct RGApp : SDLVulkanAppBase {
     render_graph.submit();
   }
 
+  gpu::PipelinePool &get_pipelines() { return pipelines; }
+
 private:
+  gpu::PipelinePool pipelines;
   rendergraph::RenderGraph render_graph;
   scene::Scene scene;
   scene::Camera camera;
@@ -199,13 +203,24 @@ private:
   glm::mat4 view_proj;
 }; 
 
+#include <iostream>
+
 int main() {
   RGApp app {800, 600};
+  auto &pool = app.get_pipelines();
+  pool.create_program("triangle", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/triangle/frag.spv", "main"}});
+  
+  pool.create_program("texdraw", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/frag.spv", "main"}});
+
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
   glm::mat4 mvp;
 
-  add_backbuffer_subpass(app.get_graph(), mvp);
+  add_backbuffer_subpass(app.get_graph(), pool, mvp);
 
   bool quit = false;
   while (!quit) {

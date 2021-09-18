@@ -90,6 +90,22 @@ namespace gpu {
       VKCHECK(vkCreateFramebuffer(device, &info, nullptr, &handle));
     }
 
+    Framebuffer(VkDevice dev, VkRenderPass renderpass, VkExtent3D range, std::initializer_list<VkImageView> attachments) : device {dev} {
+      VkFramebufferCreateInfo info {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderPass = renderpass,
+        .attachmentCount = (uint32_t)attachments.size(),
+        .pAttachments = attachments.begin(),
+        .width = range.width,
+        .height = range.height,
+        .layers = range.depth
+      };
+
+      VKCHECK(vkCreateFramebuffer(device, &info, nullptr, &handle));
+    }
+
     ~Framebuffer() {
       if (device && handle) {
         vkDestroyFramebuffer(device, handle, nullptr);

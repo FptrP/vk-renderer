@@ -21,14 +21,13 @@ namespace gpu {
 
 
   struct RenderSubpassDesc {
-    RenderSubpassDesc(bool depth, std::initializer_list<VkFormat> attachmetns);
     
     bool operator==(const RenderSubpassDesc &desc) const {
       return formats == desc.formats && use_depth == desc.use_depth;
     }
 
-    std::vector<VkFormat> formats {};
     bool use_depth = false;
+    std::vector<VkFormat> formats {};
   };
 
   template <>
@@ -210,6 +209,7 @@ namespace gpu {
   };
 
   struct GraphicsPipeline : BasePipeline {
+    GraphicsPipeline() : BasePipeline {} {}
     GraphicsPipeline(PipelinePool *p) : BasePipeline {p} {}
 
     void set_vertex_input(const VertexInput &vinput);

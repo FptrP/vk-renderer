@@ -40,9 +40,9 @@ add_executable(main
   src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
+  src/gpu/pipelines.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
-  src/gpu/pipelines.cpp
   src/framegraph/framegraph.cpp
   src/scene/scene.cpp
   src/lib/volk.c
