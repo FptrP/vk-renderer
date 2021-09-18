@@ -10,49 +10,49 @@ struct ShaderData {
 
 struct SubpassData {
   gpu::GraphicsPipeline pipeline;
-  std::unique_ptr<gpu::DynBuffer<ShaderData>> ubo;
-
-  rendergraph::ImageRef backbuff_view;
+  rendergraph::ImageViewId backbuff_view;
   bool init = false;
 };
 
 struct Nil {};
 
+std::unique_ptr<gpu::DynBuffer<ShaderData>> ubo;
 
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol, glm::mat4 &mvp) {
   graph.add_task<SubpassData>("BackbufSubpass",
     [&](SubpassData &data, rendergraph::RenderGraphBuilder &builder){
       data.backbuff_view = builder.use_backbuffer_attachment();
-      data.ubo.reset(new gpu::DynBuffer<ShaderData> {builder.get_gpu().create_dynbuffer<ShaderData>(builder.get_backbuffers_count())});
+      
       data.pipeline.attach(ppol);
     },
     [=, &mvp](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      
-      const auto &desc = resources.get_image(data.backbuff_view.get_hash()).get_info();
-
-      if (!data.init) {
-        gpu::Registers regs {};
-        data.pipeline.set_program("triangle");
-        data.pipeline.set_registers(regs);
-        data.pipeline.set_vertex_input({});
-        data.init = true;
+      if (!ubo) {
+        ubo.reset(new gpu::DynBuffer<ShaderData> {resources.get_gpu().create_dynbuffer<ShaderData>(resources.get_backbuffers_count())});
       }
+      
+      const auto &desc = resources.get_image(data.backbuff_view).get_info();
+
+
+      gpu::Registers regs {};
+      data.pipeline.set_program("triangle");
+      data.pipeline.set_registers(regs);
+      data.pipeline.set_vertex_input({});
       
       data.pipeline.set_rendersubpass({false, {desc.format}});
 
       auto backbuf_id = resources.get_backbuffer_index();
 
-      *data.ubo->get_mapped_ptr(backbuf_id) = ShaderData {mvp, glm::vec4{1, 0, 0, 0}};
+      *ubo->get_mapped_ptr(backbuf_id) = ShaderData {mvp, glm::vec4{1, 0, 0, 0}};
       
       auto set = resources.allocate_set(data.pipeline.get_layout(0));
       gpu::DescriptorWriter writer {set};
-      writer.bind_dynbuffer(0, *data.ubo);
+      writer.bind_dynbuffer(0, *ubo);
       writer.write(resources.get_gpu().api_device());
 
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
       VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};
-      uint32_t offs = data.ubo->get_offset(backbuf_id);
+      uint32_t offs = ubo->get_offset(backbuf_id);
 
       cmd.set_framebuffer(desc.width, desc.height, {resources.get_view(data.backbuff_view)});
       cmd.bind_pipeline(data.pipeline);

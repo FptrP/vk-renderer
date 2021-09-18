@@ -104,7 +104,7 @@ namespace gpu {
     DynBuffer<T> create_dynbuffer(uint32_t elems) const { return DynBuffer<T> {allocator, properties.limits.minUniformBufferOffsetAlignment, elems}; }
 
     Sampler create_sampler(VkSamplerCreateInfo info) const { return Sampler {logical_device, info}; }
-
+    VmaAllocator get_allocator() const { return allocator; }
   private:
     VkPhysicalDevice physical_device {nullptr};
     VkPhysicalDeviceProperties properties;

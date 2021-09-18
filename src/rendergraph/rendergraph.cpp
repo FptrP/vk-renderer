@@ -23,8 +23,8 @@ namespace rendergraph {
   }
 
 
-  void RenderGraphBuilder::use_color_attachment(std::size_t image_id, uint32_t mip, uint32_t layer) {
-    ImageSubresource subres {image_id, mip, layer};
+  ImageViewId RenderGraphBuilder::use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer) {
+    ImageSubresourceId subres {id, mip, layer};
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -33,16 +33,18 @@ namespace rendergraph {
     
     if (!input.images.count(subres)) {
       input.images[subres] = state;
-      return;
+      return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
     }
     auto &src = input.images[subres];
     if (src.layout != state.layout || src.access != state.access || src.stages != state.stages) {
       throw std::runtime_error {"Incompatible image usage"};
     }
+
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
   
-  void RenderGraphBuilder::use_depth_attachment(std::size_t image_id, uint32_t mip, uint32_t layer) {
-    ImageSubresource subres {image_id, mip, layer};
+  ImageViewId RenderGraphBuilder::use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer) {
+    ImageSubresourceId subres {id, mip, layer};
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -51,15 +53,16 @@ namespace rendergraph {
     
     if (!input.images.count(subres)) {
       input.images[subres] = state;
-      return;
+      return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
     }
     auto &src = input.images[subres];
     if (src.layout != state.layout || src.access != state.access || src.stages != state.stages) {
       throw std::runtime_error {"Incompatible image usage"};
     }
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
   
-  void RenderGraphBuilder::sample_image(std::size_t image_id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
+  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
     auto pipeline_stages = get_pipeline_flags(stages);
 
     ImageSubresourceState state {
@@ -70,7 +73,7 @@ namespace rendergraph {
 
     for (uint32_t layer = base_layer; layer < base_layer + layer_count; layer++) {
       for (uint32_t mip = base_mip; mip < base_mip + mip_count; mip++) {
-        ImageSubresource subres {image_id, mip, layer};
+        ImageSubresourceId subres {id, mip, layer};
         if (!input.images.count(subres)) {        
           input.images[subres] = state;
           continue;
@@ -85,16 +88,18 @@ namespace rendergraph {
         src.access |= state.access;
       }
     }
+
+    return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_2D, base_mip, mip_count, base_layer, layer_count}};
   }
 
   void RenderGraphBuilder::prepare_backbuffer() {
-    auto hash = get_backbuffer_hash();
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
       0,
       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
     };
-    ImageSubresource subres {hash, 0, 0};
+
+    ImageSubresourceId subres {backbuffer, 0, 0};
     
     if (!input.images.count(subres)) {
       input.images[subres] = state;
@@ -104,76 +109,56 @@ namespace rendergraph {
     throw std::runtime_error {"Incompatible access for backbuffer"};
   }
 
-  ImageRef RenderGraphBuilder::use_backbuffer_attachment() {
-    auto hash = get_backbuffer_hash();
+  ImageViewId RenderGraphBuilder::use_backbuffer_attachment() {
+
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
-    ImageSubresource subres {hash, 0, 0};
+
+    ImageSubresourceId subres {backbuffer, 0, 0};
 
     if (!input.images.count(subres)) {
       input.images[subres] = state;
-      return {hash, gpu::ImageViewRange{VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
+      return {backbuffer, gpu::ImageViewRange{VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
     }
 
     throw std::runtime_error {"Incompatible access for backbuffer"};
-    return {hash, {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
+    return {backbuffer, {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
   }
 
-  void RenderGraphBuilder::create_img(std::size_t hash, const ImageDescriptor &desc) {
-    if (!resources.image_remap.count(hash)) {
-      auto index = resources.images.size();
-      auto img = gpu.get_device().new_image();
-      img.create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage);
-      resources.images.push_back(std::move(img));
-      resources.image_remap[hash] = index;
-      return;
-    }
-
-    throw std::runtime_error {"Attempt to recreate image"};
-  }
-
-  void RenderGraphBuilder::create_buf(std::size_t hash, const BufferDescriptor &desc) {
-    if (!resources.buffer_remap.count(hash)) {
-      auto index = resources.buffers.size();
-      auto buf = gpu.get_device().new_buffer();
-      buf.create(desc.memory_type, desc.size, desc.usage);
-      resources.buffers.push_back({std::move(buf), {}});
-      resources.buffer_remap[hash] = index;
-    }
-
-    throw std::runtime_error {"Attemp to recreate buffer"};
-  }
   
-  const gpu::ImageInfo &RenderGraphBuilder::get_image_info(std::size_t hash) {
-    auto index = resources.image_remap.at(hash);
-    return resources.images.at(index).vk_image.get_info();
+  const gpu::ImageInfo &RenderGraphBuilder::get_image_info(ImageResourceId id) {
+    return resources.get_info(id);
   }
   
   RenderGraph::RenderGraph(gpu::Device &device, gpu::Swapchain &swapchain)
-    : gpu {device, swapchain}
+    : gpu {device, swapchain},
+      resources {device.get_allocator(), device.api_device()}
   {
-    auto backbuffers = gpu.take_backbuffers();
-    resources.images.reserve(backbuffers.size());
+    auto vk_backbuffers = gpu.take_backbuffers();
+    backbuffers.reserve(vk_backbuffers.size());
 
-    for (uint32_t i = 0; i < backbuffers.size(); i++) {
-      resources.images.push_back(Image {std::move(backbuffers[i])});
+    for (auto &img : vk_backbuffers) {
+      backbuffers.push_back(resources.create_global_image_ref(img));
     }
   }
 
   void RenderGraph::submit() {
-    if (tracking_state.is_dirty()) {
-      tracking_state.flush();
-      tracking_state.dump_barriers();
-    }
+    tracking_state.flush(resources);
+    tracking_state.dump_barriers();
+    auto barriers = tracking_state.take_barriers();
+    tracking_state.clear();
 
     gpu.begin();
-    remap_backbuffer();
+
+    auto backbuffer_index = gpu.get_backbuf_index(); 
+    if (backbuffer_index != 0) {
+      resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
+    }
 
     auto &api_cmd = gpu.get_cmdbuff(); 
-    auto &barriers = tracking_state.get_barriers();
     RenderResources res {resources, gpu};
 
     for (uint32_t i = 0; i < tasks.size(); i++) {
@@ -185,11 +170,17 @@ namespace rendergraph {
     }
 
     gpu.submit();
-    tracking_state.set_external_state(resources);
+
+    tasks.clear();
+
+    if (backbuffer_index != 0) {
+      resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
+    }
+
   }
 
-  void RenderGraph::remap_backbuffer() {
-    resources.image_remap[get_backbuffer_hash()] = gpu.get_backbuf_index();
+  ImageResourceId RenderGraph::get_backbuffer() const {
+    return backbuffers[0];
   }
 
   void RenderGraph::write_barrier(const Barrier &barrier, VkCommandBuffer cmd) {
@@ -204,51 +195,39 @@ namespace rendergraph {
     VkPipelineStageFlags dst_stages = 0;
 
     for (const auto &state : barrier.image_barriers) {
-      auto &image = resources.images.at(resources.image_remap.at(state.image_hash));
-      const auto &desc = image.vk_image.get_info();
+      auto &image = resources.get_image(state.id.id);
+      const auto &desc = resources.get_info(state.id.id);
       
-      if (state.mip >= desc.mip_levels || state.layer >= desc.array_layers) {
+      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
         throw std::runtime_error {"Image subresource out of range"};
       }
       
-      auto src_state = state.src;
-      if (state.acquire_barrier) {
-        src_state = image.get_external_state({0, state.layer, state.mip});
-      }
-      
-      src_stages |= src_state.stages;
+      src_stages |= state.src.stages;
       dst_stages |= state.dst.stages;
 
       VkImageMemoryBarrier img_barrier {
         VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         nullptr,
-        src_state.access,
+        state.src.access,
         state.dst.access,
-        src_state.layout,
+        state.src.layout,
         state.dst.layout,
         VK_QUEUE_FAMILY_IGNORED,
         VK_QUEUE_FAMILY_IGNORED,
-        image.vk_image.get_image(),
-        {desc.aspect, state.mip, 1, state.layer, 1}
+        image.get_image(),
+        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
       };
       image_barriers.push_back(img_barrier);
     }
 
     for (const auto &state : barrier.buffer_barriers) {
-      auto &buff = resources.buffers.at(resources.buffer_remap.at(state.buffer_hash));
-
-      auto src_state = state.src;
-      if (state.acquire_barrier) {
-        src_state = buff.input_state;
-      }
-
-      src_stages |= src_state.stages;
+      src_stages |= state.src.stages;
       dst_stages |= state.dst.stages;
 
       VkMemoryBarrier mem_barrier {
         VK_STRUCTURE_TYPE_MEMORY_BARRIER,
         nullptr,
-        src_state.access,
+        state.src.access,
         state.dst.access
       };
       mem_barriers.push_back(mem_barrier);
@@ -270,18 +249,16 @@ namespace rendergraph {
       image_barriers.data());
   }
 
-  gpu::Buffer &RenderResources::get_buffer(std::size_t id) {
-    auto index = resources.buffer_remap.at(id);
-    return resources.buffers.at(index).vk_buffer;
+  gpu::Buffer &RenderResources::get_buffer(BufferResourceId id) {
+    return resources.get_buffer(id);
   }
   
-  gpu::Image &RenderResources::get_image(std::size_t id) {
-    auto index = resources.image_remap.at(id);
-    return resources.images.at(index).vk_image;
+  gpu::Image &RenderResources::get_image(ImageResourceId id) {
+    return resources.get_image(id);
   }
   
-  VkImageView RenderResources::get_view(const ImageRef &ref) {
-    return get_image(ref.get_hash()).get_view(ref.get_range());
+  VkImageView RenderResources::get_view(const ImageViewId &ref) {
+    return get_image(ref.get_id()).get_view(ref.get_range());
   }
 
 }

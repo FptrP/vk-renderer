@@ -4,6 +4,117 @@
 
 namespace rendergraph {
   
+  ImageResourceId GraphResources::create_global_image(const ImageDescriptor &desc) {
+    uint32_t remap_index = image_remap.size();
+    uint32_t image_index = global_images.size();
+    
+    uint32_t count = desc.array_layers * desc.mip_levels;
+    std::unique_ptr<ImageSubresourceState[]> ptr;
+    ptr.reset(new ImageSubresourceState[count]);
+
+    global_images.emplace_back(GlobalImage {
+      gpu::Image {api_device, allocator}, 
+      std::move(ptr)
+    });
+
+    global_images.back().vk_image.create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage);
+    image_remap.emplace_back(image_index);
+    
+    ImageResourceId id {};
+    id.index = remap_index;
+    return id;
+  }
+
+  ImageResourceId GraphResources::create_global_image_ref(gpu::Image &image) {
+    uint32_t remap_index = image_remap.size();
+    uint32_t image_index = global_images.size();
+    const auto &desc = image.get_info();
+
+    uint32_t count = desc.array_layers * desc.mip_levels;
+    std::unique_ptr<ImageSubresourceState[]> ptr;
+    ptr.reset(new ImageSubresourceState[count]);
+
+    global_images.emplace_back(GlobalImage {
+      gpu::Image {api_device, allocator}, 
+      std::move(ptr)
+    });
+
+    global_images.back().vk_image.create_reference(image.get_image(), desc);
+    image_remap.emplace_back(image_index);
+    
+    ImageResourceId id {};
+    id.index = remap_index;
+    return id;
+  }
+  
+  BufferResourceId GraphResources::create_global_buffer(const BufferDescriptor &desc) {
+    uint32_t remap_index = buffer_remap.size();
+    uint32_t buffer_index = global_buffers.size();
+
+    global_buffers.emplace_back(GlobalBuffer {
+      gpu::Buffer {allocator},
+      {}
+    });
+
+    global_buffers.back().vk_buffer.create(desc.memory_type, desc.size, desc.usage);
+    buffer_remap.emplace_back(buffer_index);
+
+    BufferResourceId id {};
+    id.index = remap_index;
+    return id;
+  }
+  
+  void GraphResources::remap(ImageResourceId src, ImageResourceId dst) {
+    std::swap(image_remap.at(src.index), image_remap.at(dst.index));
+  }
+  
+  void GraphResources::remap(BufferResourceId src, BufferResourceId dst) {
+    std::swap(buffer_remap.at(src.index), buffer_remap.at(dst.index));
+  }
+
+  const gpu::ImageInfo &GraphResources::get_info(ImageResourceId id) const {
+    auto index = image_remap.at(id.index);
+    return global_images.at(index).vk_image.get_info(); 
+  }
+
+  gpu::Image &GraphResources::get_image(ImageResourceId id) {
+    auto index = image_remap.at(id.index);
+    return global_images.at(index).vk_image;
+  }
+  
+  gpu::Buffer &GraphResources::get_buffer(BufferResourceId id) {
+    auto index = buffer_remap.at(id.index);
+    return global_buffers.at(index).vk_buffer;
+  }
+
+  void GraphResources::set_input_state(BufferResourceId id, BufferState state) {
+    auto index = buffer_remap.at(id.index);
+    auto &desc = global_buffers.at(index);
+    desc.input_state = state;
+  } 
+  
+  void GraphResources::set_input_state(ImageSubresourceId id, ImageSubresourceState state) {
+    auto index = image_remap.at(id.id.index);
+    auto &desc = global_images.at(index);
+    auto &info = desc.vk_image.get_info();
+    uint32_t offset = id.layer * info.mip_levels + id.mip;
+    desc.input_state[offset] = state;
+  }
+
+  const BufferState &GraphResources::get_input_state(BufferResourceId id) const {
+    auto index = buffer_remap.at(id.index);
+    auto &desc = global_buffers.at(index);
+    return desc.input_state;
+  }
+  
+  const ImageSubresourceState &GraphResources::get_input_state(ImageSubresourceId id) const {
+    auto index = image_remap.at(id.id.index);
+    auto &desc = global_images.at(index);
+    auto &info = desc.vk_image.get_info();
+    uint32_t offset = id.layer * info.mip_levels + id.mip;
+    return desc.input_state[offset];
+  }
+
   static bool is_ro_access(VkAccessFlags flags) {
     const auto read_msk =
       VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|
@@ -20,22 +131,6 @@ namespace rendergraph {
     return (flags & read_msk);
   }
 
-  /*static bool is_write_access(VkAccessFlags flags) {
-    const auto rw_msk = 
-      VK_ACCESS_SHADER_WRITE_BIT|
-      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|
-      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT|
-      VK_ACCESS_TRANSFER_WRITE_BIT|
-      VK_ACCESS_MEMORY_WRITE_BIT;
-  
-    return (flags & rw_msk);
-  }*/
-
-  std::size_t get_backbuffer_hash() {
-    struct BackbufferID : BaseImageID {};
-    return get_image_hash<BackbufferID>();
-  }
-
   static bool merge_states(ImageTrackingState &state, const ImageSubresourceState &access) {
     if (state.dst.layout != access.layout) {
       return false;
@@ -50,12 +145,12 @@ namespace rendergraph {
   }
 
 
-  void TrackingState::add_input(const ResourceInput &input) {
+  void TrackingState::add_input(const ResourceInput &input, const GraphResources &resources) {
     for (auto [subres, state] : input.images) {
       if (!images.count(subres)) {
         auto &track = images[subres]; 
         track.barrier_id = index;
-        track.acquire_barrier = true;
+        track.src = resources.get_input_state(subres);
         track.dst = state;
         continue;
       }
@@ -71,27 +166,22 @@ namespace rendergraph {
       }
 
       ImageBarrierState image_barrier {};
-      image_barrier.image_hash = subres.image_hash;
-      image_barrier.mip = subres.mip;
-      image_barrier.layer = subres.layer;
-      image_barrier.acquire_barrier = track.acquire_barrier;
+      image_barrier.id = subres;
       image_barrier.src = track.src;
       image_barrier.dst = track.dst;
 
       barriers[track.barrier_id].image_barriers.push_back(image_barrier);
 
-      track.acquire_barrier = false;
       track.barrier_id = index;
       track.src = track.dst;
       track.dst = state;
-      dirty = true;
     }
 
     for (auto [buf_id, state] : input.buffers) {
       if (!buffers.count(buf_id)) {
         auto &track = buffers[buf_id];
-        track.acquire_barrier = true;
         track.barrier_id = index;
+        track.src = resources.get_input_state(buf_id);
         track.dst = state;
         continue;
       }
@@ -109,24 +199,21 @@ namespace rendergraph {
       }
 
       BufferBarrierState buffer_barrier {};
-      buffer_barrier.buffer_hash = buf_id;
-      buffer_barrier.acquire_barrier = track.acquire_barrier;
+      buffer_barrier.id = buf_id;
       buffer_barrier.src = track.src;
       buffer_barrier.dst = track.dst;
 
       barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
 
-      track.acquire_barrier = false;
       track.barrier_id = index;
       track.src = track.dst;
       track.dst = state;
-      dirty = true;
     }
     index++;
   }
 
   
-  void TrackingState::flush() {
+  void TrackingState::flush(GraphResources &resources) {
     for (auto [subres, track] : images) {
 
       if (barriers.size() <= track.barrier_id) {
@@ -134,15 +221,13 @@ namespace rendergraph {
       }
 
       ImageBarrierState image_barrier {};
-      image_barrier.image_hash = subres.image_hash;
-      image_barrier.mip = subres.mip;
-      image_barrier.layer = subres.layer;
-      image_barrier.acquire_barrier = track.acquire_barrier;
+      image_barrier.id = subres;
       image_barrier.src = track.src;
       image_barrier.dst = track.dst;
 
       barriers[track.barrier_id].image_barriers.push_back(image_barrier);
       track.src = track.dst;
+      resources.set_input_state(subres, track.dst);
     }
 
     for (auto [buf_id, track] : buffers) {
@@ -152,39 +237,23 @@ namespace rendergraph {
       }
 
       BufferBarrierState buffer_barrier {};
-      buffer_barrier.buffer_hash = buf_id;
-      buffer_barrier.acquire_barrier = track.acquire_barrier;
+      buffer_barrier.id = buf_id;
       buffer_barrier.src = track.src;
       buffer_barrier.dst = track.dst;
 
       barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
       track.src = track.dst;
+      resources.set_input_state(buf_id, track.dst);
     }
-
-    dirty = false;
   }
 
   void TrackingState::clear() {
-    dirty = false;
     index = 0;
     buffers.clear();
     images.clear();
     barriers.clear();
   }
 
-  void TrackingState::set_external_state(GraphResources &resources) {
-    for (auto [subres, state] : images) {
-      auto index = resources.image_remap.at(subres.image_hash);
-      auto &image = resources.images.at(index);
-      image.get_external_state(subres) = state.dst;
-    }
-
-    for (auto [buf_id, state] : buffers) {
-      auto index = resources.buffer_remap.at(buf_id);
-      auto &buff = resources.buffers.at(index);
-      buff.input_state = state.dst;
-    }
-  }
 
   #define PRINT_FLAG(flag_name) if (flags & flag_name) { \
     if (!first) std::cout << "|"; \
@@ -274,16 +343,12 @@ namespace rendergraph {
 
     for (const auto &img_barrier : barrier.image_barriers) {
       std::cout << " - Image barrier " << "\n";
-      std::cout << " --- hash " << img_barrier.image_hash << "\n";
-      std::cout << " --- mip = " << img_barrier.mip << " layer = " << img_barrier.layer << "\n";
+      std::cout << " --- id " << img_barrier.id.id.get_index() << "\n";
+      std::cout << " --- mip = " << img_barrier.id.mip << " layer = " << img_barrier.id.layer << "\n";
 
-      if (img_barrier.acquire_barrier) {
-        std::cout << " --- acquire_barrier\n";
-      } else {
-        std::cout << " --- src_stages : "; dump_stages(img_barrier.src.stages); std::cout << "\n";
-        std::cout << " --- src_access : "; dump_access(img_barrier.src.access); std::cout << "\n";
-        std::cout << " --- src_layout : "; dump_layout(img_barrier.src.layout); std::cout << "\n";
-      }
+      std::cout << " --- src_stages : "; dump_stages(img_barrier.src.stages); std::cout << "\n";
+      std::cout << " --- src_access : "; dump_access(img_barrier.src.access); std::cout << "\n";
+      std::cout << " --- src_layout : "; dump_layout(img_barrier.src.layout); std::cout << "\n";
       
       std::cout << " --- dst_stages : "; dump_stages(img_barrier.dst.stages); std::cout << "\n";
       std::cout << " --- dst_access : "; dump_access(img_barrier.dst.access); std::cout << "\n";
@@ -292,13 +357,10 @@ namespace rendergraph {
 
     for (const auto &buf_barrier : barrier.buffer_barriers) {
 
-      std::cout << " - Memory barrier for buffer " << buf_barrier.buffer_hash << "\n";
-      if (buf_barrier.acquire_barrier) {
-        std::cout << " --- acquire_barrier\n";
-      } else {
-        std::cout << " --- src_stages : "; dump_stages(buf_barrier.src.stages); std::cout << "\n";
-        std::cout << " --- src_access : "; dump_access(buf_barrier.src.access); std::cout << "\n";
-      }
+      std::cout << " - Memory barrier for buffer " << buf_barrier.id.get_index() << "\n";
+
+      std::cout << " --- src_stages : "; dump_stages(buf_barrier.src.stages); std::cout << "\n";
+      std::cout << " --- src_access : "; dump_access(buf_barrier.src.access); std::cout << "\n";
       
       std::cout << " --- dst_stages : "; dump_stages(buf_barrier.dst.stages); std::cout << "\n";
       std::cout << " --- dst_access : "; dump_access(buf_barrier.dst.access); std::cout << "\n";

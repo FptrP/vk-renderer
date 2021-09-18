@@ -219,8 +219,6 @@ int main() {
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
   glm::mat4 mvp;
-
-  add_backbuffer_subpass(app.get_graph(), pool, mvp);
   
   bool quit = false;
   while (!quit) {
@@ -235,6 +233,7 @@ int main() {
 
     camera.move(1.f/30.f);
     mvp = projection * camera.get_view_mat();
+    add_backbuffer_subpass(app.get_graph(), pool, mvp);
     app.submit(); 
   }
   return 0;

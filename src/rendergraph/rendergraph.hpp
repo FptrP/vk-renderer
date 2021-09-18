@@ -13,56 +13,20 @@ namespace rendergraph {
   struct RenderGraph;
 
   struct RenderGraphBuilder {
-    RenderGraphBuilder(GraphResources &res, GpuState &state) : resources {res}, gpu {state} {}
-
-    template <typename ImageRes>
-    ImageRef use_color_attachment(uint32_t mip = 0, uint32_t layer = 0) {
-      auto hash = get_image_hash<ImageRes>();
-      use_color_attachment(hash, mip, layer);
-      return {hash, {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
-    }
-
-    template <typename ImageRes>
-    ImageRef use_depth_attachment(uint32_t mip = 0, uint32_t layer = 0) {
-      auto hash = get_image_hash<ImageRes>();
-      use_depth_attachment(hash, mip, layer);
-      return {hash, {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
-    }
-
-    template <typename ImageRes>
-    ImageRef sample_image(VkShaderStageFlags stages, uint32_t base_mip = 0, uint32_t mip_count = 1, uint32_t base_layer = 0, uint32_t layer_count = 1) {
-      auto hash = get_image_hash<ImageRes>();
-      sample_image(hash, stages, base_mip, mip_count, base_layer, layer_count);
-      return {hash, {VK_IMAGE_VIEW_TYPE_2D, base_mip, mip_count, base_layer, layer_count}};
-    }
+    RenderGraphBuilder(GraphResources &res, GpuState &state, ImageResourceId backbuf)
+      : resources {res}, gpu {state}, backbuffer {backbuf} {}
 
     void prepare_backbuffer();
-    ImageRef use_backbuffer_attachment();
-
+    ImageViewId use_backbuffer_attachment();
+    
+    ImageViewId use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
+    ImageViewId use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
+    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
+    
+    const gpu::ImageInfo &get_image_info(ImageResourceId id);
     const ResourceInput &get_input() const { return input; }
 
-    template <typename ImageRes>
-    std::size_t create_image(const ImageDescriptor &desc) {
-      auto hash = get_image_hash<ImageRes>();
-      create_img(hash, desc);
-      return hash; 
-    }
-
-    template <typename BufferRes>
-    void create_buffer(const BufferDescriptor &desc) {
-      auto hash = get_buffer_hash<BufferRes>();
-      create_buf(hash, desc);
-      return hash; 
-    }
-
-    template <typename ImageRes>
-    const gpu::ImageInfo &get_image_info() {
-      auto hash = get_image_hash<ImageRes>();
-      return get_image_info(hash);
-    }
-
     gpu::Device &get_gpu() { return gpu.get_device(); }
-    
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}
 
@@ -70,14 +34,7 @@ namespace rendergraph {
     GraphResources &resources;
     GpuState &gpu;
     ResourceInput input;
-  
-    void use_color_attachment(std::size_t image_id, uint32_t mip, uint32_t layer);
-    void use_depth_attachment(std::size_t image_id, uint32_t mip, uint32_t layer);
-    void sample_image(std::size_t image_id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
-
-    void create_img(std::size_t hash, const ImageDescriptor &desc);
-    void create_buf(std::size_t hash, const BufferDescriptor &desc);
-    const gpu::ImageInfo &get_image_info(std::size_t hash);
+    ImageResourceId backbuffer;
 
     friend struct RenderGraph;
   };
@@ -85,9 +42,9 @@ namespace rendergraph {
   struct RenderResources {
     RenderResources(GraphResources &res, GpuState &state) : resources {res}, gpu {state} {}
 
-    gpu::Buffer &get_buffer(std::size_t id);
-    gpu::Image &get_image(std::size_t id);
-    VkImageView get_view(const ImageRef &ref);
+    gpu::Buffer &get_buffer(BufferResourceId id);
+    gpu::Image &get_image(ImageResourceId id);
+    VkImageView get_view(const ImageViewId &ref);
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
     VkDescriptorSet allocate_set(const gpu::Pipeline &pipeline, uint32_t index) { return gpu.allocate_set(pipeline.get_descriptor_set_layout(index)); }
@@ -134,12 +91,12 @@ namespace rendergraph {
 
     template <typename TaskData>
     void add_task(const std::string &name, TaskCreateCB<TaskData> create_cb, TaskRunCB<TaskData> run_cb) {
-      RenderGraphBuilder builder {resources, gpu};
+      RenderGraphBuilder builder {resources, gpu, get_backbuffer()};
       std::unique_ptr<Task<TaskData>> ptr {new Task<TaskData> {name}};
       create_cb(ptr->data, builder);
       ptr->callback = run_cb;
       tasks.push_back(std::move(ptr));
-      tracking_state.add_input(builder.input);
+      tracking_state.add_input(builder.input, resources);
     }
 
     void submit();
@@ -150,10 +107,10 @@ namespace rendergraph {
     TrackingState tracking_state;
 
     std::vector<std::unique_ptr<BaseTask>> tasks;
-    std::vector<Barrier> barriers;
+    std::vector<ImageResourceId> backbuffers;
 
-    void remap_backbuffer(); 
     void write_barrier(const Barrier &barrier, VkCommandBuffer cmd);
+    ImageResourceId get_backbuffer() const;
     friend struct RenderGraphBuilder;
   };
 

@@ -6,31 +6,12 @@
 #include <type_traits>
 #include <memory>
 #include <functional>
-#include <map>
+#include <unordered_map>
 
 #include "gpu/driver.hpp"
 
 #define RES_IMAGE_ID(name) struct name : rendergraph::BaseImageID {}
 #define RES_BUFFER_ID(name) struct name : rendergraph::BaseBufferID {}
-
-namespace rendergraph {
-  struct ImageSubresource {
-    std::size_t image_hash;
-    uint32_t layer = 0;
-    uint32_t mip = 0;
-  };
-}
-
-namespace std {
-  template<>
-  struct less<rendergraph::ImageSubresource> : std::binary_function<rendergraph::ImageSubresource, rendergraph::ImageSubresource, bool> {
-    bool operator()(const rendergraph::ImageSubresource &left, const rendergraph::ImageSubresource &right) const {
-      return (left.image_hash < right.image_hash)
-          || (left.layer < right.layer)
-          || (left.mip < right.mip);
-    }
-  };
-}
 
 namespace rendergraph {
 
@@ -62,17 +43,6 @@ namespace rendergraph {
       };
     }
   };
-  
-  struct ImageRef {
-    ImageRef(std::size_t id, gpu::ImageViewRange view) : hash {id}, range {view} {}
-    ImageRef() {}
-    std::size_t get_hash() const { return hash; }
-    const gpu::ImageViewRange &get_range() const { return range; }
-  
-  private:
-    std::size_t hash;
-    gpu::ImageViewRange range;
-  };
 
   struct BufferDescriptor {
     uint64_t size;
@@ -80,21 +50,74 @@ namespace rendergraph {
     VmaMemoryUsage memory_type;
   };
 
-  template <typename Image>
-  std::size_t get_image_hash() {
-    static_assert(std::is_base_of_v<BaseImageID, Image>, "ImageID expected");
-    std::type_index index {typeid(Image)};
-    return index.hash_code();
-  }
+  struct GraphResources;
 
-  template <typename Buffer>
-  std::size_t get_buffer_hash() {
-    static_assert(std::is_base_of_v<BaseBufferID, Buffer>, "ImageID expected");
-    std::type_index index {typeid(Buffer)};
-    return index.hash_code();
-  }
+  struct ImageResourceId {
+    ImageResourceId() {}
+    uint32_t get_index() const { return index; }
 
-  std::size_t get_backbuffer_hash();
+    bool operator==(const ImageResourceId &id) const { return index == id.index; }
+
+  private:
+    uint32_t index;
+    friend struct GraphResources;
+  };
+  
+  struct BufferResourceId {
+    BufferResourceId() {}
+    uint32_t get_index() const { return index; }
+
+    bool operator==(const BufferResourceId &id) const { return index == id.index; }
+
+  private:
+    uint32_t index;
+    friend struct GraphResources;
+  };
+
+  struct ImageSubresourceId {
+    ImageResourceId id;
+    uint32_t layer = 0;
+    uint32_t mip = 0;
+
+    bool operator==(const ImageSubresourceId &l) const { 
+      return id == l.id && layer == l.layer && mip == l.mip; 
+    }
+
+  };
+
+  struct ImageSubresourceHashFunc {
+    template <typename T>
+    static inline void hash_combine(std::size_t &s, const T &v) {
+      std::hash<T> h;
+      s ^= h(v) + 0x9e3779b9 + (s<< 6) + (s>> 2); 
+    }
+
+    std::size_t operator()(const ImageSubresourceId &res) const {
+      std::size_t h = 0;
+      hash_combine(h, res.id.get_index());
+      hash_combine(h, res.layer);
+      hash_combine(h, res.mip);
+      return h;
+    }
+  };
+
+  struct BufferHashFunc {
+    std::size_t operator()(const BufferResourceId &res) const {
+      return res.get_index();
+    }
+  };
+
+  struct ImageViewId {
+    ImageViewId(ImageResourceId id, gpu::ImageViewRange view) : res_id {id}, range {view} {}
+    ImageViewId() {}
+    
+    ImageResourceId get_id() const { return res_id; }
+    const gpu::ImageViewRange &get_range() const { return range; }
+    operator ImageResourceId() const { return res_id; } 
+  private:
+    ImageResourceId res_id;
+    gpu::ImageViewRange range;
+  };
 
   struct ImageSubresourceState {
     VkPipelineStageFlags stages = 0;
@@ -107,96 +130,104 @@ namespace rendergraph {
     VkAccessFlags access = 0;
   };
 
-  struct Image {
-    gpu::Image vk_image;
-    std::unique_ptr<ImageSubresourceState[]> input_state;
-
-    Image(gpu::Image &&img) : vk_image {std::move(img)} {
-      const auto &desc = vk_image.get_info();
-      input_state.reset(new ImageSubresourceState[desc.mip_levels * desc.array_layers]); 
-    }
-
-    ImageSubresourceState &get_external_state(ImageSubresource subres) {
-      const auto &desc = vk_image.get_info();
-      return input_state[desc.mip_levels * subres.layer + subres.mip];
-    }
-
-    const ImageSubresourceState &get_external_state(ImageSubresource subres) const {
-      const auto &desc = vk_image.get_info();
-      return input_state[desc.mip_levels * subres.layer + subres.mip];
-    }
-
-  };
-
-  struct Buffer {
-    gpu::Buffer vk_buffer;
-    BufferState input_state;
-  };
-  
   struct BufferBarrierState {
-    std::size_t buffer_hash;
+    BufferResourceId id;
     BufferState src;
     BufferState dst;
-    bool acquire_barrier; //use input_state 
   };
   
   struct ImageBarrierState {
-    std::size_t image_hash; //to ref img
-    uint32_t mip;
-    uint32_t layer;
+    ImageSubresourceId id; 
     ImageSubresourceState src;
     ImageSubresourceState dst;
-    bool acquire_barrier;
   };
 
   struct ImageTrackingState {
     uint32_t barrier_id;
-    bool acquire_barrier;
     ImageSubresourceState src;
     ImageSubresourceState dst;
   };
 
   struct BufferTrackingState {
     uint32_t barrier_id;
-    bool acquire_barrier;
     BufferState src;
     BufferState dst;
   };
 
   struct ResourceInput {
-    std::map<std::size_t, BufferState> buffers;
-    std::map<ImageSubresource, ImageSubresourceState> images;
+    std::unordered_map<BufferResourceId, BufferState, BufferHashFunc> buffers;
+    std::unordered_map<ImageSubresourceId, ImageSubresourceState, ImageSubresourceHashFunc> images;
   };
 
   struct Barrier {
     std::vector<BufferBarrierState> buffer_barriers;
     std::vector<ImageBarrierState> image_barriers;
+
     bool is_empty() const { return buffer_barriers.empty() && image_barriers.empty(); }
   };
 
   struct GraphResources {
-    std::unordered_map<std::size_t, uint32_t> image_remap;
-    std::unordered_map<std::size_t, uint32_t> buffer_remap;
-    std::vector<Image> images;
-    std::vector<Buffer> buffers;
+    GraphResources(VmaAllocator alloc, VkDevice dev) : allocator {alloc}, api_device {dev} {}
+    
+    ImageResourceId create_global_image(const ImageDescriptor &desc);
+    ImageResourceId create_global_image_ref(gpu::Image &image);
+
+    BufferResourceId create_global_buffer(const BufferDescriptor &desc);
+
+    void remap(ImageResourceId src, ImageResourceId dst);
+    void remap(BufferResourceId src, BufferResourceId dst);
+
+    const gpu::ImageInfo &get_info(ImageResourceId id) const;
+    gpu::Image &get_image(ImageResourceId id);
+    gpu::Buffer &get_buffer(BufferResourceId id);
+
+    void set_input_state(BufferResourceId id, BufferState state);
+    void set_input_state(ImageSubresourceId id, ImageSubresourceState state);
+
+    const BufferState &get_input_state(BufferResourceId id) const;
+    const ImageSubresourceState &get_input_state(ImageSubresourceId id) const;
+  private:
+    
+    struct GlobalImage {
+      gpu::Image vk_image;
+      std::unique_ptr<ImageSubresourceState[]> input_state;
+    };
+    
+    struct GlobalBuffer {
+      gpu::Buffer vk_buffer;
+      BufferState input_state;
+    };
+
+    struct FrameImage {
+      gpu::Image vk_image;
+    };
+
+    struct FrameBuffer {
+      gpu::Buffer vk_buffer;
+    };
+    
+    VmaAllocator allocator {nullptr};
+    VkDevice api_device {nullptr};
+
+    std::vector<uint32_t> image_remap;
+    std::vector<uint32_t> buffer_remap;
+    std::vector<GlobalImage> global_images;
+    std::vector<GlobalBuffer> global_buffers;
   };
 
   struct TrackingState {
-    void add_input(const ResourceInput &input);
-    void flush();
+    void add_input(const ResourceInput &input, const GraphResources &resources);
+    void flush(GraphResources &resources);
     void dump_barriers();
     void clear();
-    bool is_dirty() const { return dirty; }
 
     const std::vector<Barrier> &get_barriers() { return barriers; }
+    std::vector<Barrier> take_barriers() { return std::move(barriers); }
     
-    void set_external_state(GraphResources &resources);
-
   private:
-    bool dirty = false;
     uint32_t index = 0;
-    std::map<std::size_t, BufferTrackingState> buffers;
-    std::map<ImageSubresource, ImageTrackingState> images;
+    std::unordered_map<BufferResourceId, BufferTrackingState, BufferHashFunc> buffers;
+    std::unordered_map<ImageSubresourceId, ImageTrackingState, ImageSubresourceHashFunc> images;
     std::vector<Barrier> barriers;
 
     void dump_barrier(uint32_t barrier_id);
