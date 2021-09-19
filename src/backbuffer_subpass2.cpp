@@ -16,7 +16,7 @@ struct SubpassData {
 static gpu::GraphicsPipeline pipeline;
 struct Nil {};
 
-void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, gpu::Sampler &sampler, rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol) {
+void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, VkSampler sampler, rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol) {
   
   pipeline.attach(ppol);
   pipeline.set_program("texdraw");
@@ -31,19 +31,13 @@ void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, gpu::Sampler 
       auto &desc = builder.get_image_info(data.backbuff_view);
       pipeline.set_rendersubpass({false, {desc.format}});
     },
-    [=, &sampler](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-
-      
+    [=](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       const auto &desc = resources.get_image(data.backbuff_view).get_info();
-
-
-      auto backbuf_id = resources.get_backbuffer_index();
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
       gpu::DescriptorWriter writer {set};
       writer.bind_image(0, resources.get_image(data.texture_view), sampler);
       writer.write(resources.get_gpu().api_device());
-
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
       VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};

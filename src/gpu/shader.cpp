@@ -423,13 +423,4 @@ namespace gpu {
 
     VKCHECK(vkCreateGraphicsPipelines(base, nullptr, 1, &gfx_info, nullptr, &handle));
   }
-
-  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets, std::initializer_list<uint32_t> offsets) {
-    vkCmdBindDescriptorSets(cmd, pipeline.get_type(), pipeline.get_pipeline_layout(), first_set, sets.size(), sets.begin(), offsets.size(), offsets.begin());
-  }
-  
-  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets) {
-    bind_descriptors(cmd, pipeline, first_set, sets, {});
-  }
-
 }

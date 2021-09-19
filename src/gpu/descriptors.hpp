@@ -23,7 +23,7 @@ namespace gpu {
       return *this;
     }
 
-    DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
+    DescriptorWriter &bind_image(uint32_t binding, Image &image, VkSampler sampler) {
       ImageViewRange range {};
       range.type = VK_IMAGE_VIEW_TYPE_2D;
       range.base_layer = 0;
@@ -32,10 +32,13 @@ namespace gpu {
       range.mips_count = image.get_mip_levels();
 
       auto view = image.get_view(range);
-      images.push_back({binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, view, sampler.api_sampler()});
+      images.push_back({binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, view, sampler});
       return *this;
     }
-
+    
+    DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
+      return bind_image(binding, image, sampler.api_sampler());
+    }
 
     void write(VkDevice device) {
       std::vector<VkDescriptorBufferInfo> buffer_info;

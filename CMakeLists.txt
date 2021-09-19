@@ -38,12 +38,15 @@ add_executable(main
   src/main.cpp
   src/backbuffer_subpass2.cpp
   src/gbuffer_subpass2.cpp
+  
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
   src/gpu/pipelines.cpp
   src/gpu/resources.cpp
   src/gpu/shader.cpp
   src/gpu/cmd_buffers.cpp
+  src/gpu/samplers.cpp
+
   src/scene/scene.cpp
   src/lib/volk.c
   ${spirv-cross-sources}

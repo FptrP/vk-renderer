@@ -4,18 +4,60 @@
 #include "vkerror.hpp"
 
 #include <algorithm>
+#include <unordered_map>
+#include <functional>
 
 namespace gpu {
 
-  /*struct SamplersPool {
-    
-    void f() {
-      VkSamplerCreateInfo o;
+  struct SamplerHashFunc {
+    std::size_t operator()(const VkSamplerCreateInfo &info) const;
+  
+  private:
+    template <typename T>
+    static inline void hash_combine(std::size_t &s, const T &v) {
+      std::hash<T> h;
+      s ^= h(v) + 0x9e3779b9 + (s<< 6) + (s>> 2); 
     }
+  };
+
+  struct SamplerEqualFunc : std::binary_function<VkSamplerCreateInfo, VkSamplerCreateInfo, bool> {
+    bool operator()(const VkSamplerCreateInfo &l, const VkSamplerCreateInfo &r) const;
+  };
+
+  struct SamplerPool {
+    SamplerPool(VkDevice dev) : device {dev} {}
+    ~SamplerPool();
+
+    VkSampler get_sampler(const VkSamplerCreateInfo &info);
 
   private:
+    SamplerPool(const SamplerPool &) = delete;
+    SamplerPool &operator=(const SamplerPool &) = delete;
 
-  };*/
+    VkDevice device = nullptr;
+    std::unordered_map<VkSamplerCreateInfo, VkSampler, SamplerHashFunc, SamplerEqualFunc> samplers;
+  };
+
+  constexpr VkSamplerCreateInfo DEFAULT_SAMPLER {
+    .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+    .pNext = nullptr,
+    .flags = 0,
+    .magFilter = VK_FILTER_LINEAR,
+    .minFilter = VK_FILTER_LINEAR,
+    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+    .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    .mipLodBias = 0.f,
+    .anisotropyEnable = VK_FALSE,
+    .maxAnisotropy = 0.f,
+    .compareEnable = VK_FALSE,
+    .compareOp = VK_COMPARE_OP_ALWAYS,
+    .minLod = 0.f,
+    .maxLod = 10.f,
+    .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+    .unnormalizedCoordinates = VK_FALSE
+  };
 
   struct Sampler {
     Sampler(VkDevice device, VkSamplerCreateInfo info) : dev {device} {
@@ -46,8 +88,6 @@ namespace gpu {
     const Sampler &operator=(const Sampler &) = delete;
   };
 
-  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets, std::initializer_list<uint32_t> offsets);
-  void bind_descriptors(VkCommandBuffer cmd, Pipeline &pipeline, uint32_t first_set, std::initializer_list<VkDescriptorSet> sets);
 }
 
 #endif
