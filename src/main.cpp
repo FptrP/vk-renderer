@@ -9,169 +9,11 @@
 #include "scene/scene.hpp"
 #include "base_app.hpp"
 #include "gpu/imgui_context.hpp"
-#include "framegraph/framegraph.hpp"
-#include "backbuffer_subpass.hpp"
-#include "gbuffer_subpass.hpp"
-#include "frame_resources.hpp"
 #include "gpu/pipelines.hpp"
 
 #include "rendergraph/rendergraph.hpp"
 #include "backbuffer_subpass2.hpp"
-
-struct App : SDLVulkanAppBase {
-  App(uint32_t width, uint32_t height) 
-    : SDLVulkanAppBase {width, height},
-      desc_alloc {gpu_device().new_descriptor_pool((uint32_t)backbuffers().size())},
-      cmdbuffer_pool {gpu_device().new_command_pool()},
-      frames_count {(uint32_t)backbuffers().size()},
-      render_graph {},
-      frame_resources {render_graph},
-      frame_state {gpu_device(), width, height, frames_count},
-      gbuffer_subpass {get_context(), frame_state},
-      backbuffer_subpass {render_graph, get_context()}
-  {
-    const auto &dev = gpu_device();
-    cmd_buffers = cmdbuffer_pool.allocate(frames_count);
-    
-    for (uint32_t i = 0; i < frames_count; i++) {
-      submit_fences.push_back(dev.new_fence(true));
-      image_acquire_semaphores.push_back(dev.new_semaphore());  
-      submit_done_semaphores.push_back(dev.new_semaphore());
-    }
-
-    frame_state.bind_images(render_graph, frame_resources);
-    
-    backbuffer_subpass.create_fonts(cmd_buffers[0]);
-    
-    gbuffer_subpass.init_graph(frame_resources, frame_state, render_graph, gpu_device(), desc_alloc);
-    backbuffer_subpass.init_graph(frame_resources, frame_state, desc_alloc);
-  }
-  
-  void run() {
-    bool quit = false; 
-
-    while (!quit) {
-      backbuffer_subpass.new_frame();
-      
-      ImGui::Begin("Settings");
-      ImGui::Text("Hello world!");
-      ImGui::End();
-
-
-      SDL_Event event;
-      while (SDL_PollEvent(&event)) {
-        frame_state.process_event(event);
-        backbuffer_subpass.process_event(event);
-        
-        if (event.type == SDL_QUIT) {
-          quit = true;
-        }
-      } 
-    
-      render();
-    }
-
-    vkDeviceWaitIdle(gpu_device().api_device());
-  }
-
-  void render() {
-    VkCommandBuffer cmd = cmd_buffers[frame_index]; 
-    VkDevice device = gpu_device().api_device();
-    VkQueue queue = gpu_device().api_queue();
-    VkSwapchainKHR swapchain = gpu_swapchain().api_swapchain();
-    VkFence cmd_fence = submit_fences[frame_index];
-
-    render_graph.build_barriers();
-    //render_graph.dump_barriers();
-
-    uint32_t image_index = 0;
-    VKCHECK(vkAcquireNextImageKHR(device, swapchain, ~0ull, image_acquire_semaphores[frame_index], nullptr, &image_index)); 
-
-    gpu::Image &image = backbuffers()[image_index];
-
-    vkWaitForFences(device, 1, &cmd_fence, VK_TRUE, ~0ull);
-    submit_fences[frame_index].reset();
-    vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-    desc_alloc.flip();
-
-    auto ticks2 = SDL_GetTicks();
-    frame_state.update(frame_index, image_index, (ticks2 - ticks)/1000.f);
-    ticks = ticks2;
-
-    render_graph.set_api_image(frame_resources.backbuffer, image.get_image());
-    backbuffer_subpass.update_graph(frame_state);
-
-    VkCommandBufferBeginInfo begin_cmd {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &begin_cmd);
-    render_graph.write_commands(cmd);
-    vkEndCommandBuffer(cmd);
-
-    VkSemaphore wait_sem = image_acquire_semaphores[frame_index];
-    VkSemaphore signal_sem = submit_done_semaphores[frame_index];
-    VkPipelineStageFlags wait_mask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-    VkSubmitInfo submit_info {
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .pNext = nullptr,
-      .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &wait_sem,
-      .pWaitDstStageMask = &wait_mask,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &cmd,
-      .signalSemaphoreCount = 1,
-      .pSignalSemaphores = &signal_sem
-    };
-
-    VKCHECK(vkQueueSubmit(queue, 1, &submit_info, cmd_fence));
-
-    VkResult present_result;
-
-    VkPresentInfoKHR present_info {
-      .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .pNext = nullptr,
-      .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &signal_sem,
-      .swapchainCount = 1,
-      .pSwapchains = &swapchain,
-      .pImageIndices = &image_index,
-      .pResults = &present_result
-    };
-
-    VKCHECK(vkQueuePresentKHR(queue, &present_info));
-    VKCHECK(present_result);
-
-    frame_index = (frame_index + 1) % frames_count;
-  }
-
-private:
-  gpu::DescriptorPool desc_alloc;
-  gpu::CmdBufferPool cmdbuffer_pool;
-
-  const uint32_t frames_count = 0;
-  uint32_t frame_index = 0;
-
-  std::vector<VkCommandBuffer> cmd_buffers;
-  std::vector<gpu::Fence> submit_fences;
-  std::vector<gpu::Semaphore> image_acquire_semaphores;
-  std::vector<gpu::Semaphore> submit_done_semaphores;  
-
-  framegraph::RenderGraph render_graph;
-  FrameResources frame_resources;
-  FrameGlobal frame_state;
-  GbufferSubpass gbuffer_subpass;
-  BackbufferSubpass backbuffer_subpass;
-
-  uint32_t ticks = 0;
-};
-
-RES_IMAGE_ID(GbufferAlbedo);
-RES_IMAGE_ID(GbufferNormal);
-RES_IMAGE_ID(GbufferMaterial);
-RES_IMAGE_ID(GbufferDepth);
-
-struct CBData {
-  std::string name;
-};
+#include "gbuffer_subpass2.hpp"
 
 struct RGApp : SDLVulkanAppBase {
   RGApp(uint32_t w, uint32_t h) 
@@ -192,7 +34,7 @@ struct RGApp : SDLVulkanAppBase {
   }
 
   gpu::PipelinePool &get_pipelines() { return pipelines; }
-
+  scene::Scene &get_scene() { return scene; }
 private:
   gpu::PipelinePool pipelines;
   rendergraph::RenderGraph render_graph;
@@ -205,6 +47,27 @@ private:
 
 #include <iostream>
 
+constexpr VkSamplerCreateInfo default_sampler {
+  .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+  .pNext = nullptr,
+  .flags = 0,
+  .magFilter = VK_FILTER_LINEAR,
+  .minFilter = VK_FILTER_LINEAR,
+  .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+  .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+  .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+  .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+  .mipLodBias = 0.f,
+  .anisotropyEnable = VK_FALSE,
+  .maxAnisotropy = 0.f,
+  .compareEnable = VK_FALSE,
+  .compareOp = VK_COMPARE_OP_ALWAYS,
+  .minLod = 0.f,
+  .maxLod = 10.f,
+  .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+  .unnormalizedCoordinates = VK_FALSE
+};
+
 int main() {
   RGApp app {800, 600};
   auto &pool = app.get_pipelines();
@@ -215,6 +78,13 @@ int main() {
   pool.create_program("texdraw", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/frag.spv", "main"}});
+  
+  pool.create_program("gbuf", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/default_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/default_frag.spv", "main"}});
+
+  GbufferData gbuffer {pool, app.get_graph(), app.get_context().device, 800, 600};
+  auto sampler = app.get_context().device.create_sampler(default_sampler);
 
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
@@ -233,7 +103,8 @@ int main() {
 
     camera.move(1.f/30.f);
     mvp = projection * camera.get_view_mat();
-    add_backbuffer_subpass(app.get_graph(), pool, mvp);
+    add_gbuffer_subpass(gbuffer, app.get_graph(), app.get_scene(), mvp);
+    add_backbuffer_subpass(gbuffer.normal, sampler, app.get_graph(), pool);
     app.submit(); 
   }
   return 0;

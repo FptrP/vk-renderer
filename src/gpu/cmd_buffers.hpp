@@ -111,10 +111,14 @@ namespace gpu {
     void bind_viewport(float x, float y, float w, float h, float min_d, float max_d) { bind_viewport({x, y, w, h, min_d, max_d}); }
     void bind_scissors(int32_t x, int32_t y, uint32_t w, uint32_t h) { bind_scissors({{x, y}, {w, h}}); }
     
+    void bind_vertex_buffers(uint32_t first_binding, const std::initializer_list<VkBuffer> &buffers, const std::initializer_list<uint64_t> &offsets);
+    void bind_index_buffer(VkBuffer buffer, uint64_t offset, VkIndexType type);
+
     void clear_color_attachments(float r, float g, float b, float a);
     void clear_depth_attachment(float val);
 
     void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance);
+    void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, uint32_t vertex_offset, uint32_t first_instance);
     void dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z);
 
     void push_constants_graphics(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *constants);

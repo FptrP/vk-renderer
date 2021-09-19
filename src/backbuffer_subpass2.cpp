@@ -9,55 +9,49 @@ struct ShaderData {
 };
 
 struct SubpassData {
-  gpu::GraphicsPipeline pipeline;
   rendergraph::ImageViewId backbuff_view;
-  bool init = false;
+  rendergraph::ImageViewId texture_view;
 };
 
+static gpu::GraphicsPipeline pipeline;
 struct Nil {};
 
-std::unique_ptr<gpu::DynBuffer<ShaderData>> ubo;
-
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol, glm::mat4 &mvp) {
+void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, gpu::Sampler &sampler, rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol) {
+  
+  pipeline.attach(ppol);
+  pipeline.set_program("texdraw");
+  pipeline.set_registers({});
+  pipeline.set_vertex_input({});
+  
   graph.add_task<SubpassData>("BackbufSubpass",
     [&](SubpassData &data, rendergraph::RenderGraphBuilder &builder){
       data.backbuff_view = builder.use_backbuffer_attachment();
-      
-      data.pipeline.attach(ppol);
+      data.texture_view = builder.sample_image(draw_img, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 1, 0, 1);
+
+      auto &desc = builder.get_image_info(data.backbuff_view);
+      pipeline.set_rendersubpass({false, {desc.format}});
     },
-    [=, &mvp](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      if (!ubo) {
-        ubo.reset(new gpu::DynBuffer<ShaderData> {resources.get_gpu().create_dynbuffer<ShaderData>(resources.get_backbuffers_count())});
-      }
+    [=, &sampler](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+
       
       const auto &desc = resources.get_image(data.backbuff_view).get_info();
 
 
-      gpu::Registers regs {};
-      data.pipeline.set_program("triangle");
-      data.pipeline.set_registers(regs);
-      data.pipeline.set_vertex_input({});
-      
-      data.pipeline.set_rendersubpass({false, {desc.format}});
-
       auto backbuf_id = resources.get_backbuffer_index();
-
-      *ubo->get_mapped_ptr(backbuf_id) = ShaderData {mvp, glm::vec4{1, 0, 0, 0}};
       
-      auto set = resources.allocate_set(data.pipeline.get_layout(0));
+      auto set = resources.allocate_set(pipeline.get_layout(0));
       gpu::DescriptorWriter writer {set};
-      writer.bind_dynbuffer(0, *ubo);
+      writer.bind_image(0, resources.get_image(data.texture_view), sampler);
       writer.write(resources.get_gpu().api_device());
 
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
       VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};
-      uint32_t offs = ubo->get_offset(backbuf_id);
 
       cmd.set_framebuffer(desc.width, desc.height, {resources.get_view(data.backbuff_view)});
-      cmd.bind_pipeline(data.pipeline);
+      cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
-      cmd.bind_descriptors_graphics(0, {set}, {offs});
+      cmd.bind_descriptors_graphics(0, {set}, {});
       cmd.bind_viewport(viewport);
       cmd.bind_scissors(scissors);
       cmd.draw(3, 1, 0, 0);

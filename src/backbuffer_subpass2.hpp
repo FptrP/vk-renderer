@@ -5,6 +5,6 @@
 #include "scene/camera.hpp"
 #include "gpu/pipelines.hpp"
 
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol, glm::mat4 &mvp);
+void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, gpu::Sampler &sampler, rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol);
 
 #endif

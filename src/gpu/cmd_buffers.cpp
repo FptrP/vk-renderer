@@ -174,6 +174,10 @@ namespace gpu {
   void CmdContext::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) {
     vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
   }
+
+  void CmdContext::draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, uint32_t vertex_offset, uint32_t first_instance) {
+    vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+  }
   
   void CmdContext::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z) {
     vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
@@ -305,6 +309,14 @@ namespace gpu {
       .layerCount = 1
     };
     vkCmdClearAttachments(cmd, 1, &clear, 1, &clear_rect);
+  }
+
+  void CmdContext::bind_vertex_buffers(uint32_t first_binding, const std::initializer_list<VkBuffer> &buffers, const std::initializer_list<uint64_t> &offsets) {
+    vkCmdBindVertexBuffers(cmd, first_binding, buffers.size(), buffers.begin(), offsets.begin());
+  }
+
+  void CmdContext::bind_index_buffer(VkBuffer buffer, uint64_t offset, VkIndexType type) {
+    vkCmdBindIndexBuffer(cmd, buffer, offset, type);
   }
 
 }

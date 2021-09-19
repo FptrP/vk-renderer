@@ -286,6 +286,11 @@ namespace gpu {
       attachments.push_back(attach_desc);
     }
 
+    if (desc.use_depth) {
+      attachments.back().initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      attachments.back().finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    }
+
     std::vector<VkAttachmentReference> references;
     for (uint32_t i = 0; i < attachments.size(); i++) {
       references.push_back({i, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});

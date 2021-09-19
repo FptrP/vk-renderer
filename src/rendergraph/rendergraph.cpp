@@ -147,7 +147,7 @@ namespace rendergraph {
 
   void RenderGraph::submit() {
     tracking_state.flush(resources);
-    tracking_state.dump_barriers();
+    //tracking_state.dump_barriers();
     auto barriers = tracking_state.take_barriers();
     tracking_state.clear();
 
@@ -177,6 +177,25 @@ namespace rendergraph {
       resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
     }
 
+  }
+
+  ImageResourceId RenderGraph::create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
+    return resources.create_global_image(ImageDescriptor {
+      type,
+      info.format,
+      info.aspect,
+      tiling,
+      usage,
+      info.width,
+      info.height,
+      info.depth,
+      info.mip_levels,
+      info.array_layers
+    });
+  }
+
+  ImageResourceId RenderGraph::create_image(const ImageDescriptor &desc) {
+    return resources.create_global_image(desc);
   }
 
   ImageResourceId RenderGraph::get_backbuffer() const {

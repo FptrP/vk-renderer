@@ -37,6 +37,7 @@ add_executable(main
   src/rendergraph/gpu_ctx.cpp
   src/main.cpp
   src/backbuffer_subpass2.cpp
+  src/gbuffer_subpass2.cpp
   src/gbuffer_subpass.cpp
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
