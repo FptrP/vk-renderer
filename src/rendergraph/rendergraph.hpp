@@ -88,6 +88,7 @@ namespace rendergraph {
 
   struct RenderGraph {
     RenderGraph(gpu::Device &device, gpu::Swapchain &swapchain);
+    ~RenderGraph();
 
     template <typename TaskData>
     void add_task(const std::string &name, TaskCreateCB<TaskData> create_cb, TaskRunCB<TaskData> run_cb) {

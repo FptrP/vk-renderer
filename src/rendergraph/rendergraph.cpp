@@ -143,6 +143,16 @@ namespace rendergraph {
     for (auto &img : vk_backbuffers) {
       backbuffers.push_back(resources.create_global_image_ref(img));
     }
+    gpu.acquire_image();
+
+    auto index = gpu.get_backbuf_index();
+    if (index != 0) {
+      resources.remap(backbuffers[0], backbuffers[index]);
+    }
+  }
+
+  RenderGraph::~RenderGraph() {
+    vkDeviceWaitIdle(gpu.get_device().api_device());
   }
 
   void RenderGraph::submit() {
@@ -152,11 +162,6 @@ namespace rendergraph {
     tracking_state.clear();
 
     gpu.begin();
-
-    auto backbuffer_index = gpu.get_backbuf_index(); 
-    if (backbuffer_index != 0) {
-      resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
-    }
 
     auto &api_cmd = gpu.get_cmdbuff(); 
     RenderResources res {resources, gpu};
@@ -173,6 +178,13 @@ namespace rendergraph {
 
     tasks.clear();
 
+    if (gpu.get_backbuf_index() != 0) {
+      resources.remap(backbuffers[0], backbuffers[gpu.get_backbuf_index()]);
+    }
+
+    gpu.acquire_image();
+
+    auto backbuffer_index = gpu.get_backbuf_index(); 
     if (backbuffer_index != 0) {
       resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
     }

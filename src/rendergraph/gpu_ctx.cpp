@@ -2,17 +2,19 @@
 
 namespace rendergraph {
 
-  void GpuState::begin() {
-
-    auto &cmd = cmd_buffers[frame_index]; 
-    VkFence cmd_fence = submit_fences[frame_index];
-
+  void GpuState::acquire_image() {
     VKCHECK(vkAcquireNextImageKHR(
       device.api_device(),
       swapchain.api_swapchain(),
       ~0ull,
       image_acquire_semaphores[frame_index],
       nullptr, &backbuf_index));
+  }
+
+  void GpuState::begin() {
+
+    auto &cmd = cmd_buffers[frame_index]; 
+    VkFence cmd_fence = submit_fences[frame_index];
 
     vkWaitForFences(device.api_device(), 1, &cmd_fence, VK_TRUE, UINT64_MAX);
     submit_fences[frame_index].reset();

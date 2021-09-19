@@ -107,5 +107,8 @@ int main() {
     add_backbuffer_subpass(gbuffer.normal, sampler, app.get_graph(), pool);
     app.submit(); 
   }
+
+  
+
   return 0;
 }

@@ -31,6 +31,7 @@ namespace rendergraph {
 
     ~GpuState() { vkDeviceWaitIdle(device.api_device()); }
 
+    void acquire_image();
     void begin();
     void submit();
 
