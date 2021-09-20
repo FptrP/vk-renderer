@@ -19,34 +19,10 @@ GbufferData::GbufferData(gpu::PipelinePool &pipelines, rendergraph::RenderGraph 
   regs.depth_stencil.depthTestEnable = VK_TRUE;
   regs.depth_stencil.depthWriteEnable = VK_TRUE;
   
-  gpu::VertexInput vinput;
-
-  vinput.bindings = {{0, sizeof(scene::Vertex), VK_VERTEX_INPUT_RATE_VERTEX}};
-  vinput.attributes = {
-    {
-      .location = 0,
-      .binding = 0,
-      .format = VK_FORMAT_R32G32B32_SFLOAT,
-      .offset = offsetof(scene::Vertex, pos)
-    },
-    {
-      .location = 1,
-      .binding = 0,
-      .format = VK_FORMAT_R32G32B32_SFLOAT,
-      .offset = offsetof(scene::Vertex, norm)
-    },
-    {
-      .location = 2,
-      .binding = 0,
-      .format = VK_FORMAT_R32G32_SFLOAT,
-      .offset = offsetof(scene::Vertex, uv)
-    }
-  };
-
   pipeline.attach(pipelines);
   pipeline.set_program("gbuf");
   pipeline.set_registers(regs);
-  pipeline.set_vertex_input(vinput);    
+  pipeline.set_vertex_input(scene::get_vertex_input());    
   pipeline.set_rendersubpass({true, {albedo_info.format, normal_info.format, mat_info.format, depth_info.format}});
 
   width = w;

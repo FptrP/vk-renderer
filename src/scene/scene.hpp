@@ -14,10 +14,8 @@
 #include <assimp/pbrmaterial.h>
 
 #include "gpu/driver.hpp"
-
+#include "gpu/pipelines.hpp"
 namespace scene {
-  template <typename T>
-  struct VertexInputState;
 
   struct Vertex {
     glm::vec3 pos;
@@ -25,40 +23,7 @@ namespace scene {
     glm::vec2 uv;
   };
 
-  template<>
-  struct VertexInputState<Vertex> {
-    static constexpr uint32_t bindings_count = 1;
-    static constexpr uint32_t attribs_count = 3;
-
-    VkVertexInputBindingDescription bindings[1] {
-      {
-        .binding = 0,
-        .stride = sizeof(Vertex),
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-      }
-    };
-
-    VkVertexInputAttributeDescription attribures[3] {
-      {
-        .location = 0,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32B32_SFLOAT,
-        .offset = offsetof(Vertex, pos)
-      },
-      {
-        .location = 1,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32B32_SFLOAT,
-        .offset = offsetof(Vertex, norm)
-      },
-      {
-        .location = 2,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32_SFLOAT,
-        .offset = offsetof(Vertex, uv)
-      },
-    };
-  };
+  gpu::VertexInput get_vertex_input();
 
   struct Mesh {
     uint32_t vertex_offset;

@@ -33,8 +33,9 @@ namespace rendergraph {
     GraphResources &resources;
     GpuState &gpu;
     TrackingState &tracking_state;
-
     ImageResourceId backbuffer;
+
+    bool present_backbuffer = false;
 
     friend struct RenderGraph;
   };
@@ -99,6 +100,8 @@ namespace rendergraph {
       ptr->callback = run_cb;
       tasks.push_back(std::move(ptr));
       
+      present_backbuffer |= builder.present_backbuffer;
+
       tracking_state.next_task();
     }
 
@@ -113,6 +116,7 @@ namespace rendergraph {
     GpuState gpu;
     GraphResources resources;
     TrackingState tracking_state;
+    bool present_backbuffer = false;
 
     std::vector<std::unique_ptr<BaseTask>> tasks;
     std::vector<ImageResourceId> backbuffers;

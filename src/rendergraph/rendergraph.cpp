@@ -74,6 +74,7 @@ namespace rendergraph {
 
     ImageSubresourceId subres {backbuffer, 0, 0};
     tracking_state.add_input(resources, subres, state);
+    present_backbuffer = true;
   }
 
   ImageViewId RenderGraphBuilder::use_backbuffer_attachment() {
@@ -135,21 +136,24 @@ namespace rendergraph {
       api_cmd.end_renderpass(); //to be sure about barriers
     }
 
-    gpu.submit();
-
     tasks.clear();
 
-    if (gpu.get_backbuf_index() != 0) {
+    if (!present_backbuffer) {
+      gpu.submit(false);
+      return;
+    }
+
+    if (gpu.get_backbuf_index() != 0) { //remap back to restore order
       resources.remap(backbuffers[0], backbuffers[gpu.get_backbuf_index()]);
     }
 
-    gpu.acquire_image();
+    gpu.submit(true);
 
     auto backbuffer_index = gpu.get_backbuf_index(); 
     if (backbuffer_index != 0) {
       resources.remap(backbuffers[0], backbuffers[backbuffer_index]);
     }
-
+    present_backbuffer = false;
   }
 
   ImageResourceId RenderGraph::create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {

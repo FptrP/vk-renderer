@@ -11,9 +11,8 @@ namespace rendergraph {
     GpuState(gpu::Device &dev, gpu::Swapchain &swp)
       : device {dev}, 
         swapchain {swp},
-        vk_backbuffers {device.get_swapchain_images(swapchain)},
         backbuffers_count { swapchain.get_images_count()},
-        frames_count {(uint32_t)vk_backbuffers.size()},
+        frames_count {backbuffers_count},
         cmdbuffer_pool {device.new_command_pool()},
         desc_pool {device.new_descriptor_pool(frames_count)},
         cmd_buffers {cmdbuffer_pool.allocate_contexts(frames_count)}
@@ -24,6 +23,9 @@ namespace rendergraph {
 
       for (uint32_t i = 0; i < frames_count; i++) {
         submit_fences.push_back(device.new_fence(true));
+      }
+
+      for (uint32_t i = 0; i < backbuffers_count; i++) {
         image_acquire_semaphores.push_back(device.new_semaphore());
         submit_done_semaphores.push_back(device.new_semaphore());
       }
@@ -33,7 +35,7 @@ namespace rendergraph {
 
     void acquire_image();
     void begin();
-    void submit();
+    void submit(bool present);
 
     gpu::CmdContext &get_cmdbuff() { return cmd_buffers[frame_index]; }
     
@@ -51,7 +53,6 @@ namespace rendergraph {
     gpu::Device &device;
     gpu::Swapchain &swapchain;
 
-    std::vector<gpu::Image> vk_backbuffers;
     uint32_t backbuffers_count = 0;
     uint32_t frames_count = 0;
 
@@ -66,6 +67,7 @@ namespace rendergraph {
     
     uint32_t frame_index = 0;
     uint32_t backbuf_index = 0;
+    uint32_t backbuf_sem_index = 0;
   };
 
 }

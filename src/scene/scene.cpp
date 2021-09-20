@@ -5,6 +5,34 @@
 
 namespace scene {
 
+  gpu::VertexInput get_vertex_input() {
+    gpu::VertexInput vinput;
+
+    vinput.bindings = {{0, sizeof(scene::Vertex), VK_VERTEX_INPUT_RATE_VERTEX}};
+    vinput.attributes = {
+      {
+        .location = 0,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(scene::Vertex, pos)
+      },
+      {
+        .location = 1,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(scene::Vertex, norm)
+      },
+      {
+        .location = 2,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(scene::Vertex, uv)
+      }
+    };
+    
+    return vinput;
+  }
+
   void Scene::load(const std::string &path, const std::string &folder) {
     Assimp::Importer importer {};
     auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);

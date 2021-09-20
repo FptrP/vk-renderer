@@ -7,7 +7,7 @@ namespace rendergraph {
       device.api_device(),
       swapchain.api_swapchain(),
       ~0ull,
-      image_acquire_semaphores[frame_index],
+      image_acquire_semaphores[backbuf_sem_index],
       nullptr, &backbuf_index));
   }
 
@@ -25,7 +25,33 @@ namespace rendergraph {
     cmd.clear_resources();
   }
   
-  void GpuState::submit() {
+  void GpuState::submit(bool present) {
+    if (!present) {
+      auto &cmd = cmd_buffers[frame_index];
+      auto api_cmd = cmd.get_command_buffer();
+      VkFence cmd_fence = submit_fences[frame_index];
+      auto queue = device.api_queue();
+
+      cmd.end();
+
+      VkSubmitInfo submit_info {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = nullptr,
+        .pWaitDstStageMask = nullptr,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &api_cmd,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = nullptr
+      };
+
+      VKCHECK(vkQueueSubmit(queue, 1, &submit_info, cmd_fence));
+      frame_index = (frame_index + 1) % frames_count;
+      return;
+    }
+
+
     auto &cmd = cmd_buffers[frame_index];
     auto api_cmd = cmd.get_command_buffer();
     VkFence cmd_fence = submit_fences[frame_index];
@@ -35,8 +61,8 @@ namespace rendergraph {
 
     cmd.end();
 
-    VkSemaphore wait_sem = image_acquire_semaphores[frame_index];
-    VkSemaphore signal_sem = submit_done_semaphores[frame_index];
+    VkSemaphore wait_sem = image_acquire_semaphores[backbuf_sem_index];
+    VkSemaphore signal_sem = submit_done_semaphores[backbuf_sem_index];
     VkPipelineStageFlags wait_mask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
     VkSubmitInfo submit_info {
@@ -70,6 +96,9 @@ namespace rendergraph {
     VKCHECK(present_result);
 
     frame_index = (frame_index + 1) % frames_count;
+    backbuf_sem_index = (backbuf_sem_index + 1) % backbuffers_count;
+
+    acquire_image();
   }
 
 }

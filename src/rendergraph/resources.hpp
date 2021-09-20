@@ -10,13 +10,7 @@
 
 #include "gpu/driver.hpp"
 
-#define RES_IMAGE_ID(name) struct name : rendergraph::BaseImageID {}
-#define RES_BUFFER_ID(name) struct name : rendergraph::BaseBufferID {}
-
 namespace rendergraph {
-
-  struct BaseImageID {};
-  struct BaseBufferID {};
 
   struct ImageDescriptor {
     VkImageType type;
@@ -154,11 +148,6 @@ namespace rendergraph {
     uint32_t barrier_id = INVALID_BARRIER_INDEX;
     BufferState src;
     BufferState dst;
-  };
-
-  struct ResourceInput {
-    std::unordered_map<BufferResourceId, BufferState, BufferHashFunc> buffers;
-    std::unordered_map<ImageSubresourceId, ImageSubresourceState, ImageSubresourceHashFunc> images;
   };
 
   struct Barrier {
