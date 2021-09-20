@@ -23,10 +23,9 @@ private:
   gpu::GraphicsPipeline pipeline;
   gpu::DynBuffer<GbufferShaderData> ubo;
   uint32_t width, height;
-  friend void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp);
+  friend void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp, rendergraph::ImageResourceId img, VkSampler sampler);
 };
 
-
-void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp);
+void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp, rendergraph::ImageResourceId img, VkSampler sampler);
 
 #endif

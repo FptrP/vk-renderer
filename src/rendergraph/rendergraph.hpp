@@ -22,7 +22,11 @@ namespace rendergraph {
     ImageViewId use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
-    
+    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages);
+
+    void transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
+    void transfer_write(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
+
     const gpu::ImageInfo &get_image_info(ImageResourceId id);
 
     gpu::Device &get_gpu() { return gpu.get_device(); }
@@ -111,6 +115,8 @@ namespace rendergraph {
 
     ImageResourceId create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
     ImageResourceId create_image(const ImageDescriptor &desc);
+
+    const gpu::ImageInfo get_descriptor(ImageResourceId id) const;
 
   private:
     GpuState gpu;

@@ -70,8 +70,8 @@ namespace rendergraph {
 
   struct ImageSubresourceId {
     ImageResourceId id;
-    uint32_t layer = 0;
     uint32_t mip = 0;
+    uint32_t layer = 0;
 
     bool operator==(const ImageSubresourceId &l) const { 
       return id == l.id && layer == l.layer && mip == l.mip; 

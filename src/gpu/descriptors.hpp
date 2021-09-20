@@ -24,18 +24,22 @@ namespace gpu {
     }
 
     DescriptorWriter &bind_image(uint32_t binding, Image &image, VkSampler sampler) {
+      return bind_image(binding, image, sampler, 0, image.get_mip_levels());
+    }
+    
+    DescriptorWriter &bind_image(uint32_t binding, Image &image, VkSampler sampler, uint32_t base_mip, uint32_t mips_count) {
       ImageViewRange range {};
       range.type = VK_IMAGE_VIEW_TYPE_2D;
       range.base_layer = 0;
-      range.base_mip = 0;
+      range.base_mip = base_mip;
       range.layers_count = 1;
-      range.mips_count = image.get_mip_levels();
+      range.mips_count = mips_count;
 
       auto view = image.get_view(range);
       images.push_back({binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, view, sampler});
       return *this;
     }
-    
+
     DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
       return bind_image(binding, image, sampler.api_sampler());
     }

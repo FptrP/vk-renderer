@@ -15,6 +15,7 @@
 #include "rendergraph/rendergraph.hpp"
 #include "backbuffer_subpass2.hpp"
 #include "gbuffer_subpass2.hpp"
+#include "util_passes.hpp"
 
 struct RGApp : SDLVulkanAppBase {
   RGApp(uint32_t w, uint32_t h) 
@@ -63,10 +64,31 @@ int main() {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/default_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/default_frag.spv", "main"}});
 
+  pool.create_program("perlin", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/frag.spv", "main"}
+  });
+
   gpu::SamplerPool samplers {app.get_context().device.api_device()};
 
   GbufferData gbuffer {pool, app.get_graph(), app.get_context().device, 800, 600};
   auto sampler = samplers.get_sampler(gpu::DEFAULT_SAMPLER);
+
+  auto noise_image = app.get_graph().create_image(
+    VK_IMAGE_TYPE_2D, {
+      VK_FORMAT_R8G8B8A8_SRGB,
+      VK_IMAGE_ASPECT_COLOR_BIT,
+      256,
+      256,
+      1,
+      8,
+      1
+    },
+    VK_IMAGE_TILING_OPTIMAL, 
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+
+  gen_perlin_noise2D(app.get_graph(), noise_image, app.get_pipelines(), 0, 0);
+  gen_mipmaps(app.get_graph(), noise_image, app.get_pipelines());
 
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
@@ -94,8 +116,8 @@ int main() {
 
 
     mvp = projection * camera.get_view_mat();
-    add_gbuffer_subpass(gbuffer, app.get_graph(), app.get_scene(), mvp);
-    add_backbuffer_subpass(gbuffer.normal, sampler, app.get_graph(), pool);
+    add_gbuffer_subpass(gbuffer, app.get_graph(), app.get_scene(), mvp, noise_image, sampler);
+    add_backbuffer_subpass(gbuffer.albedo, sampler, app.get_graph(), pool);
     app.submit(); 
   }
 

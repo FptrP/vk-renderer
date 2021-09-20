@@ -38,7 +38,8 @@ add_executable(main
   src/main.cpp
   src/backbuffer_subpass2.cpp
   src/gbuffer_subpass2.cpp
-  
+  src/util_passes.cpp
+
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp
   src/gpu/pipelines.cpp

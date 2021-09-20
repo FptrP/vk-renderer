@@ -29,13 +29,15 @@ GbufferData::GbufferData(gpu::PipelinePool &pipelines, rendergraph::RenderGraph 
   height = h;
 }
 
-void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp) {
+void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp, rendergraph::ImageResourceId img, VkSampler sampler) {
 
   struct GbuffResources {
     rendergraph::ImageViewId albedo;
     rendergraph::ImageViewId normal;
     rendergraph::ImageViewId material;
     rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId texture;
+    VkSampler image_sampler;
   };
 
   rendergraph.add_task<GbuffResources>("GbufferPass",
@@ -45,13 +47,15 @@ void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergrap
       data.normal = builder.use_color_attachment(gbuf.normal, 0, 0);
       data.material = builder.use_color_attachment(gbuf.material, 0, 0);
       data.depth = builder.use_depth_attachment(gbuf.depth, 0, 0);
-
+      data.texture = builder.sample_image(img, VK_SHADER_STAGE_FRAGMENT_BIT);
+      data.image_sampler = sampler;
     },
     [=, &gbuf, &scene](GbuffResources &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       
       auto set = resources.allocate_set(gbuf.pipeline.get_layout(0));
       gpu::DescriptorWriter writer {set};
       writer.bind_dynbuffer(0, gbuf.ubo);
+      writer.bind_image(1, resources.get_image(data.texture), data.image_sampler);
       writer.write(resources.get_gpu().api_device());
 
       *gbuf.ubo.get_mapped_ptr(resources.get_frame_index()) = {mvp};

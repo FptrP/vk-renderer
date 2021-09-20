@@ -46,6 +46,11 @@ namespace rendergraph {
     return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
   
+  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages) {
+    const auto &desc = resources.get_info(id);
+    return sample_image(id, stages, 0, desc.mip_levels, 0, desc.array_layers);
+  }
+
   ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
     auto pipeline_stages = get_pipeline_flags(stages);
 
@@ -63,6 +68,37 @@ namespace rendergraph {
     }
 
     return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_2D, base_mip, mip_count, base_layer, layer_count}};
+  }
+
+  void RenderGraphBuilder::transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
+    ImageSubresourceState state {
+      VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_ACCESS_TRANSFER_READ_BIT,
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+    };
+
+    for (uint32_t layer = base_layer; layer < base_layer + layer_count; layer++) {
+      for (uint32_t mip = base_mip; mip < base_mip + mip_count; mip++) {
+        ImageSubresourceId subres {id, mip, layer};
+        tracking_state.add_input(resources, subres, state);
+      }
+    }
+
+  }
+  
+  void RenderGraphBuilder::transfer_write(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
+    ImageSubresourceState state {
+      VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_ACCESS_TRANSFER_WRITE_BIT,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    };
+
+    for (uint32_t layer = base_layer; layer < base_layer + layer_count; layer++) {
+      for (uint32_t mip = base_mip; mip < base_mip + mip_count; mip++) {
+        ImageSubresourceId subres {id, mip, layer};
+        tracking_state.add_input(resources, subres, state);
+      }
+    }
   }
 
   void RenderGraphBuilder::prepare_backbuffer() {
@@ -177,6 +213,10 @@ namespace rendergraph {
 
   ImageResourceId RenderGraph::get_backbuffer() const {
     return backbuffers[0];
+  }
+
+  const gpu::ImageInfo RenderGraph::get_descriptor(ImageResourceId id) const {
+    return resources.get_info(id);
   }
 
   void RenderGraph::write_barrier(const Barrier &barrier, VkCommandBuffer cmd) {
