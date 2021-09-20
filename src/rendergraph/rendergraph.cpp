@@ -30,16 +30,7 @@ namespace rendergraph {
       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     };
-    
-    if (!input.images.count(subres)) {
-      input.images[subres] = state;
-      return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
-    }
-    auto &src = input.images[subres];
-    if (src.layout != state.layout || src.access != state.access || src.stages != state.stages) {
-      throw std::runtime_error {"Incompatible image usage"};
-    }
-
+    tracking_state.add_input(resources, subres, state);
     return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
   
@@ -51,14 +42,7 @@ namespace rendergraph {
       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     };
     
-    if (!input.images.count(subres)) {
-      input.images[subres] = state;
-      return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
-    }
-    auto &src = input.images[subres];
-    if (src.layout != state.layout || src.access != state.access || src.stages != state.stages) {
-      throw std::runtime_error {"Incompatible image usage"};
-    }
+    tracking_state.add_input(resources, subres, state);
     return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
   
@@ -74,18 +58,7 @@ namespace rendergraph {
     for (uint32_t layer = base_layer; layer < base_layer + layer_count; layer++) {
       for (uint32_t mip = base_mip; mip < base_mip + mip_count; mip++) {
         ImageSubresourceId subres {id, mip, layer};
-        if (!input.images.count(subres)) {        
-          input.images[subres] = state;
-          continue;
-        }
-
-        auto &src = input.images[subres];
-        if (state.layout != src.layout) {
-          throw std::runtime_error {"Incompatible layout"};
-        }
-
-        src.stages |= state.stages;
-        src.access |= state.access;
+        tracking_state.add_input(resources, subres, state);
       }
     }
 
@@ -100,13 +73,7 @@ namespace rendergraph {
     };
 
     ImageSubresourceId subres {backbuffer, 0, 0};
-    
-    if (!input.images.count(subres)) {
-      input.images[subres] = state;
-      return;
-    }
-
-    throw std::runtime_error {"Incompatible access for backbuffer"};
+    tracking_state.add_input(resources, subres, state);
   }
 
   ImageViewId RenderGraphBuilder::use_backbuffer_attachment() {
@@ -118,13 +85,7 @@ namespace rendergraph {
     };
 
     ImageSubresourceId subres {backbuffer, 0, 0};
-
-    if (!input.images.count(subres)) {
-      input.images[subres] = state;
-      return {backbuffer, gpu::ImageViewRange{VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
-    }
-
-    throw std::runtime_error {"Incompatible access for backbuffer"};
+    tracking_state.add_input(resources, subres, state);
     return {backbuffer, {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1}};
   }
 

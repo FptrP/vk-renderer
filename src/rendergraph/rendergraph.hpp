@@ -13,8 +13,8 @@ namespace rendergraph {
   struct RenderGraph;
 
   struct RenderGraphBuilder {
-    RenderGraphBuilder(GraphResources &res, GpuState &state, ImageResourceId backbuf)
-      : resources {res}, gpu {state}, backbuffer {backbuf} {}
+    RenderGraphBuilder(GraphResources &res, GpuState &state, TrackingState &ts, ImageResourceId backbuf)
+      : resources {res}, gpu {state}, tracking_state {ts}, backbuffer {backbuf} {}
 
     void prepare_backbuffer();
     ImageViewId use_backbuffer_attachment();
@@ -24,7 +24,6 @@ namespace rendergraph {
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     
     const gpu::ImageInfo &get_image_info(ImageResourceId id);
-    const ResourceInput &get_input() const { return input; }
 
     gpu::Device &get_gpu() { return gpu.get_device(); }
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
@@ -33,7 +32,8 @@ namespace rendergraph {
   private:
     GraphResources &resources;
     GpuState &gpu;
-    ResourceInput input;
+    TrackingState &tracking_state;
+
     ImageResourceId backbuffer;
 
     friend struct RenderGraph;
@@ -92,12 +92,14 @@ namespace rendergraph {
 
     template <typename TaskData>
     void add_task(const std::string &name, TaskCreateCB<TaskData> create_cb, TaskRunCB<TaskData> run_cb) {
-      RenderGraphBuilder builder {resources, gpu, get_backbuffer()};
+      RenderGraphBuilder builder {resources, gpu, tracking_state, get_backbuffer()};
+      
       std::unique_ptr<Task<TaskData>> ptr {new Task<TaskData> {name}};
       create_cb(ptr->data, builder);
       ptr->callback = run_cb;
       tasks.push_back(std::move(ptr));
-      tracking_state.add_input(builder.input, resources);
+      
+      tracking_state.next_task();
     }
 
     void submit();

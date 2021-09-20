@@ -142,14 +142,16 @@ namespace rendergraph {
     ImageSubresourceState dst;
   };
 
+  constexpr uint32_t INVALID_BARRIER_INDEX = UINT32_MAX;
+
   struct ImageTrackingState {
-    uint32_t barrier_id;
+    uint32_t barrier_id = INVALID_BARRIER_INDEX;
     ImageSubresourceState src;
     ImageSubresourceState dst;
   };
 
   struct BufferTrackingState {
-    uint32_t barrier_id;
+    uint32_t barrier_id = INVALID_BARRIER_INDEX;
     BufferState src;
     BufferState dst;
   };
@@ -181,21 +183,22 @@ namespace rendergraph {
     gpu::Image &get_image(ImageResourceId id);
     gpu::Buffer &get_buffer(BufferResourceId id);
 
-    void set_input_state(BufferResourceId id, BufferState state);
-    void set_input_state(ImageSubresourceId id, ImageSubresourceState state);
-
-    const BufferState &get_input_state(BufferResourceId id) const;
-    const ImageSubresourceState &get_input_state(ImageSubresourceId id) const;
+    const BufferTrackingState &get_resource_state(BufferResourceId id) const;
+    const ImageTrackingState &get_resource_state(ImageSubresourceId id) const;
+    
+    BufferTrackingState &get_resource_state(BufferResourceId id);
+    ImageTrackingState &get_resource_state(ImageSubresourceId id);
+  
   private:
     
     struct GlobalImage {
       gpu::Image vk_image;
-      std::unique_ptr<ImageSubresourceState[]> input_state;
+      std::unique_ptr<ImageTrackingState[]> states;
     };
     
     struct GlobalBuffer {
       gpu::Buffer vk_buffer;
-      BufferState input_state;
+      BufferTrackingState state;
     };
 
     struct FrameImage {
@@ -216,7 +219,10 @@ namespace rendergraph {
   };
 
   struct TrackingState {
-    void add_input(const ResourceInput &input, const GraphResources &resources);
+    void add_input(GraphResources &resources, const BufferResourceId &id, const BufferState &state);
+    void add_input(GraphResources &resources, const ImageSubresourceId &id, const ImageSubresourceState &state);
+    void next_task() { index++; }
+
     void flush(GraphResources &resources);
     void dump_barriers();
     void clear();
@@ -226,8 +232,8 @@ namespace rendergraph {
     
   private:
     uint32_t index = 0;
-    std::unordered_map<BufferResourceId, BufferTrackingState, BufferHashFunc> buffers;
-    std::unordered_map<ImageSubresourceId, ImageTrackingState, ImageSubresourceHashFunc> images;
+    std::vector<BufferResourceId> dirty_buffers;
+    std::vector<ImageSubresourceId> dirty_images;
     std::vector<Barrier> barriers;
 
     void dump_barrier(uint32_t barrier_id);

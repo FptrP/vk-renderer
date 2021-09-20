@@ -9,8 +9,8 @@ namespace rendergraph {
     uint32_t image_index = global_images.size();
     
     uint32_t count = desc.array_layers * desc.mip_levels;
-    std::unique_ptr<ImageSubresourceState[]> ptr;
-    ptr.reset(new ImageSubresourceState[count]);
+    std::unique_ptr<ImageTrackingState[]> ptr;
+    ptr.reset(new ImageTrackingState[count]);
 
     global_images.emplace_back(GlobalImage {
       gpu::Image {api_device, allocator}, 
@@ -31,8 +31,8 @@ namespace rendergraph {
     const auto &desc = image.get_info();
 
     uint32_t count = desc.array_layers * desc.mip_levels;
-    std::unique_ptr<ImageSubresourceState[]> ptr;
-    ptr.reset(new ImageSubresourceState[count]);
+    std::unique_ptr<ImageTrackingState[]> ptr;
+    ptr.reset(new ImageTrackingState[count]);
 
     global_images.emplace_back(GlobalImage {
       gpu::Image {api_device, allocator}, 
@@ -87,32 +87,32 @@ namespace rendergraph {
     return global_buffers.at(index).vk_buffer;
   }
 
-  void GraphResources::set_input_state(BufferResourceId id, BufferState state) {
+  const BufferTrackingState &GraphResources::get_resource_state(BufferResourceId id) const {
     auto index = buffer_remap.at(id.index);
-    auto &desc = global_buffers.at(index);
-    desc.input_state = state;
-  } 
-  
-  void GraphResources::set_input_state(ImageSubresourceId id, ImageSubresourceState state) {
-    auto index = image_remap.at(id.id.index);
-    auto &desc = global_images.at(index);
-    auto &info = desc.vk_image.get_info();
-    uint32_t offset = id.layer * info.mip_levels + id.mip;
-    desc.input_state[offset] = state;
+    return global_buffers.at(index).state;
   }
+  
+  const ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) const {
+    auto index = image_remap.at(id.id.index);
 
-  const BufferState &GraphResources::get_input_state(BufferResourceId id) const {
+    auto &img = global_images.at(index); 
+    auto mip_count = img.vk_image.get_mip_levels(); 
+
+    return img.states[id.layer * mip_count + id.mip];
+  }
+    
+  BufferTrackingState &GraphResources::get_resource_state(BufferResourceId id) {
     auto index = buffer_remap.at(id.index);
-    auto &desc = global_buffers.at(index);
-    return desc.input_state;
+    return global_buffers.at(index).state;
   }
   
-  const ImageSubresourceState &GraphResources::get_input_state(ImageSubresourceId id) const {
+  ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) {
     auto index = image_remap.at(id.id.index);
-    auto &desc = global_images.at(index);
-    auto &info = desc.vk_image.get_info();
-    uint32_t offset = id.layer * info.mip_levels + id.mip;
-    return desc.input_state[offset];
+
+    auto &img = global_images.at(index); 
+    auto mip_count = img.vk_image.get_mip_levels(); 
+
+    return img.states[id.layer * mip_count + id.mip];
   }
 
   static bool is_ro_access(VkAccessFlags flags) {
@@ -144,113 +144,137 @@ namespace rendergraph {
     return false;
   }
 
-
-  void TrackingState::add_input(const ResourceInput &input, const GraphResources &resources) {
-    for (auto [subres, state] : input.images) {
-      if (!images.count(subres)) {
-        auto &track = images[subres]; 
-        track.barrier_id = index;
-        track.src = resources.get_input_state(subres);
-        track.dst = state;
-        continue;
-      }
-
-      auto &track = images[subres];
-
-      if (merge_states(track, state)) {
-        continue;
-      }
-
-      if (barriers.size() <= track.barrier_id) {
-        barriers.resize(track.barrier_id + 1);
-      }
-
-      ImageBarrierState image_barrier {};
-      image_barrier.id = subres;
-      image_barrier.src = track.src;
-      image_barrier.dst = track.dst;
-
-      barriers[track.barrier_id].image_barriers.push_back(image_barrier);
-
-      track.barrier_id = index;
-      track.src = track.dst;
-      track.dst = state;
+  static bool is_empty_state(const BufferTrackingState &track) {
+    if (track.barrier_id == INVALID_BARRIER_INDEX) {
+      return true;
     }
 
-    for (auto [buf_id, state] : input.buffers) {
-      if (!buffers.count(buf_id)) {
-        auto &track = buffers[buf_id];
-        track.barrier_id = index;
-        track.src = resources.get_input_state(buf_id);
-        track.dst = state;
-        continue;
-      }
-
-      auto &track = buffers[buf_id];
-
-      if (is_ro_access(track.dst.access) && is_ro_access(state.access)) {
-        track.dst.stages |= state.stages;
-        track.dst.access |= state.access;
-        continue;
-      }
-
-      if (barriers.size() <= track.barrier_id) {
-        barriers.resize(track.barrier_id + 1);
-      }
-
-      BufferBarrierState buffer_barrier {};
-      buffer_barrier.id = buf_id;
-      buffer_barrier.src = track.src;
-      buffer_barrier.dst = track.dst;
-
-      barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
-
-      track.barrier_id = index;
-      track.src = track.dst;
-      track.dst = state;
-    }
-    index++;
+    return false;
   }
 
+  static bool is_empty_state(const ImageTrackingState &track) {
+    if (track.barrier_id == INVALID_BARRIER_INDEX) {
+      return true;
+    }
+
+    return false;
+  }
+
+  void TrackingState::add_input(GraphResources &resources, const BufferResourceId &id, const BufferState &state) {
+    auto &track = resources.get_resource_state(id);
+
+    if (is_empty_state(track)) { //acquire resource
+      track.barrier_id = index;
+      track.dst = state;
+      dirty_buffers.push_back(id);
+      return;
+    }
+
+    if (is_ro_access(track.dst.access) && is_ro_access(state.access)) {
+      track.dst.access |= state.access;
+      track.dst.stages |= state.stages;
+      return;
+    }
+    //uncompatible accesses in the same task
+    if (track.barrier_id == index) {
+      throw std::runtime_error {"Incompatible buffer usage in task"};
+    }
+
+    if (barriers.size() <= track.barrier_id) {
+      barriers.resize(track.barrier_id + 1);
+    }
+
+    BufferBarrierState buffer_barrier {};
+    buffer_barrier.id = id;
+    buffer_barrier.src = track.src;
+    buffer_barrier.dst = track.dst;
+
+    barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
+
+    track.barrier_id = index;
+    track.src = track.dst;
+    track.dst = state;
+  }
   
+  void TrackingState::add_input(GraphResources &resources, const ImageSubresourceId &id, const ImageSubresourceState &state) {
+    auto &track = resources.get_resource_state(id);
+
+    if (is_empty_state(track)) { //acquire resource
+      track.barrier_id = index;
+      track.dst = state;
+      dirty_images.push_back(id);
+      return;
+    }
+
+    if (merge_states(track, state)) {
+      return;
+    }
+
+    //uncompatible accesses in the same task
+    if (track.barrier_id == index) {
+      throw std::runtime_error {"Incompatible image usage in task"};
+    }
+
+    if (barriers.size() <= track.barrier_id) {
+      barriers.resize(track.barrier_id + 1);
+    }
+    
+    ImageBarrierState image_barrier {};
+    image_barrier.id = id;
+    image_barrier.src = track.src;
+    image_barrier.dst = track.dst;
+
+    barriers[track.barrier_id].image_barriers.push_back(image_barrier);
+
+    track.barrier_id = index;
+    track.src = track.dst;
+    track.dst = state;
+  }
+
   void TrackingState::flush(GraphResources &resources) {
-    for (auto [subres, track] : images) {
+    for (auto id : dirty_images) {
+      auto &track = resources.get_resource_state(id);
 
       if (barriers.size() <= track.barrier_id) {
         barriers.resize(track.barrier_id + 1);
       }
 
       ImageBarrierState image_barrier {};
-      image_barrier.id = subres;
+      image_barrier.id = id;
       image_barrier.src = track.src;
       image_barrier.dst = track.dst;
 
       barriers[track.barrier_id].image_barriers.push_back(image_barrier);
       track.src = track.dst;
-      resources.set_input_state(subres, track.dst);
+      track.barrier_id = INVALID_BARRIER_INDEX;
     }
 
-    for (auto [buf_id, track] : buffers) {
+    for (auto id : dirty_buffers) {
+      auto &track = resources.get_resource_state(id);
 
       if (barriers.size() <= track.barrier_id) {
         barriers.resize(track.barrier_id + 1);
       }
 
       BufferBarrierState buffer_barrier {};
-      buffer_barrier.id = buf_id;
+      buffer_barrier.id = id;
       buffer_barrier.src = track.src;
       buffer_barrier.dst = track.dst;
 
       barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
       track.src = track.dst;
-      resources.set_input_state(buf_id, track.dst);
+      track.barrier_id = INVALID_BARRIER_INDEX;
     }
+
+    index = 0;
+    dirty_buffers.clear();
+    dirty_images.clear();
   }
 
   void TrackingState::clear() {
     index = 0;
-    buffers.clear();
-    images.clear();
+    dirty_buffers.clear();
+    dirty_images.clear();
     barriers.clear();
   }
 
