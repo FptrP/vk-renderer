@@ -8,6 +8,8 @@
 #include "gpu_ctx.hpp"
 #include "gpu/descriptors.hpp"
 
+#define RENDERGRAPH_DEBUG 0
+#define RENDERGRAPH_USE_EVENTS 1
 
 namespace rendergraph {
   struct RenderGraph;
@@ -128,6 +130,8 @@ namespace rendergraph {
     std::vector<ImageResourceId> backbuffers;
 
     void write_barrier(const Barrier &barrier, VkCommandBuffer cmd);
+    void write_wait_events(const std::vector<Barrier> &barriers, const Barrier &barrier, VkCommandBuffer cmd);
+
     ImageResourceId get_backbuffer() const;
     friend struct RenderGraphBuilder;
   };

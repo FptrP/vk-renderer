@@ -154,8 +154,16 @@ namespace rendergraph {
   }
 
   void RenderGraph::submit() {
+    static bool once = true;
     tracking_state.flush(resources);
-    //tracking_state.dump_barriers();
+#if RENDERGRAPH_DEBUG
+    tracking_state.dump_barriers();
+#endif
+    if (once) {
+      tracking_state.dump_barriers();
+      once = false;
+    }
+
     auto barriers = tracking_state.take_barriers();
     tracking_state.clear();
 
@@ -164,14 +172,32 @@ namespace rendergraph {
     auto &api_cmd = gpu.get_cmdbuff(); 
     RenderResources res {resources, gpu};
 
+#if RENDERGRAPH_USE_EVENTS
+    for (uint32_t i = 0; i < tasks.size(); i++) {
+      if (barriers.size() > i) {
+        if (i == 0) {
+          write_barrier(barriers[i], api_cmd.get_command_buffer());
+        } else {
+          write_wait_events(barriers, barriers[i], api_cmd.get_command_buffer());
+        }
+      }
+
+      tasks[i]->write_commands(res, api_cmd);
+      api_cmd.end_renderpass(); //to be sure about barriers
+      if (barriers[i].signal_mask) {
+        barriers[i].release_event = api_cmd.signal_event(barriers[i].signal_mask);
+      }
+    }
+#else
     for (uint32_t i = 0; i < tasks.size(); i++) {
       if (barriers.size() > i) {
         write_barrier(barriers[i], api_cmd.get_command_buffer());
       }
+
       tasks[i]->write_commands(res, api_cmd);
       api_cmd.end_renderpass(); //to be sure about barriers
     }
-
+#endif
     tasks.clear();
 
     if (!present_backbuffer) {
@@ -279,6 +305,100 @@ namespace rendergraph {
       0, 
       mem_barriers.size(), 
       mem_barriers.data(), 
+      0,
+      nullptr,
+      image_barriers.size(),
+      image_barriers.data());
+  }
+
+  void RenderGraph::write_wait_events(const std::vector<Barrier> &barriers, const Barrier &barrier, VkCommandBuffer cmd) {
+    if (barrier.is_empty()) {
+      return;
+    }
+    
+    std::vector<VkImageMemoryBarrier> image_barriers;
+    std::vector<VkMemoryBarrier> mem_barriers;
+    std::vector<VkEvent> wait_events;
+
+    VkPipelineStageFlags src_stages = 0;
+    VkPipelineStageFlags dst_stages = 0;
+
+    for (const auto &state : barrier.image_barriers) {
+      auto &image = resources.get_image(state.id.id);
+      const auto &desc = resources.get_info(state.id.id);
+      
+      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
+        throw std::runtime_error {"Image subresource out of range"};
+      }
+      
+      src_stages |= state.src.stages;
+      dst_stages |= state.dst.stages;
+
+      VkImageMemoryBarrier img_barrier {
+        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        nullptr,
+        state.src.access,
+        state.dst.access,
+        state.src.layout,
+        state.dst.layout,
+        VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED,
+        image.get_image(),
+        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
+      };
+      
+      image_barriers.push_back(img_barrier);
+
+      if (state.wait_for == INVALID_BARRIER_INDEX) {
+        throw std::runtime_error {"barrier waits for INVALID_BARRIER_INDEX"};
+      }
+
+      auto event = barriers.at(state.wait_for).release_event;
+
+      if (!event) {
+        throw std::runtime_error {"Use of not created event"};
+      }
+
+      wait_events.push_back(event);
+    }
+
+    for (const auto &state : barrier.buffer_barriers) {
+      src_stages |= state.src.stages;
+      dst_stages |= state.dst.stages;
+
+      VkMemoryBarrier mem_barrier {
+        VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        nullptr,
+        state.src.access,
+        state.dst.access
+      };
+      mem_barriers.push_back(mem_barrier);
+
+      if (state.wait_for == INVALID_BARRIER_INDEX) {
+        throw std::runtime_error {"barrier waits for INVALID_BARRIER_INDEX"};
+      }
+
+      auto event = barriers.at(state.wait_for).release_event;
+
+      if (!event) {
+        throw std::runtime_error {"Use of not created event"};
+      }
+
+      wait_events.push_back(event);
+
+    }
+
+    if (!src_stages) {
+      throw std::runtime_error {"Wait for nothing"};
+    }
+
+    vkCmdWaitEvents(cmd,
+      wait_events.size(),
+      wait_events.data(),
+      src_stages,
+      dst_stages,
+      mem_barriers.size(),
+      mem_barriers.data(),
       0,
       nullptr,
       image_barriers.size(),

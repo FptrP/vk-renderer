@@ -124,28 +124,34 @@ namespace rendergraph {
     VkAccessFlags access = 0;
   };
 
+  constexpr uint32_t INVALID_BARRIER_INDEX = UINT32_MAX;
+
   struct BufferBarrierState {
+    uint32_t wait_for = INVALID_BARRIER_INDEX;
     BufferResourceId id;
     BufferState src;
     BufferState dst;
   };
   
   struct ImageBarrierState {
+    uint32_t wait_for = INVALID_BARRIER_INDEX;
     ImageSubresourceId id; 
     ImageSubresourceState src;
     ImageSubresourceState dst;
   };
 
-  constexpr uint32_t INVALID_BARRIER_INDEX = UINT32_MAX;
-
   struct ImageTrackingState {
     uint32_t barrier_id = INVALID_BARRIER_INDEX;
+    uint32_t last_access = INVALID_BARRIER_INDEX;
+    uint32_t wait_for = INVALID_BARRIER_INDEX;
     ImageSubresourceState src;
     ImageSubresourceState dst;
   };
 
   struct BufferTrackingState {
     uint32_t barrier_id = INVALID_BARRIER_INDEX;
+    uint32_t last_access = INVALID_BARRIER_INDEX;
+    uint32_t wait_for = INVALID_BARRIER_INDEX;
     BufferState src;
     BufferState dst;
   };
@@ -153,6 +159,9 @@ namespace rendergraph {
   struct Barrier {
     std::vector<BufferBarrierState> buffer_barriers;
     std::vector<ImageBarrierState> image_barriers;
+    
+    VkPipelineStageFlags signal_mask = 0;
+    VkEvent release_event = nullptr;
 
     bool is_empty() const { return buffer_barriers.empty() && image_barriers.empty(); }
   };
@@ -225,7 +234,7 @@ namespace rendergraph {
     std::vector<ImageSubresourceId> dirty_images;
     std::vector<Barrier> barriers;
 
-    void dump_barrier(uint32_t barrier_id);
+    void dump_barrier(const Barrier &barrier);
   };
 
   

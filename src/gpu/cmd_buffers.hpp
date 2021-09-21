@@ -124,6 +124,8 @@ namespace gpu {
     void push_constants_graphics(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *constants);
     void push_constants_compute(uint32_t offset, uint32_t size, const void *constants);
     
+    VkEvent signal_event(VkPipelineStageFlags stages);
+
     VkCommandBuffer get_command_buffer() const { return cmd; }
     void clear_resources();
     //void draw_indexed
@@ -151,7 +153,7 @@ namespace gpu {
     } fb_state {};
 
     std::vector<CtxResource*> delayed_free {};
-  
+
     void flush_framebuffer_state(VkRenderPass renderpass);
     //CmdContext(const CmdContext &) = delete;
     //CmdContext(CmdContext &&) = default;

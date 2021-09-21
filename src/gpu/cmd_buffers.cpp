@@ -27,6 +27,18 @@ namespace gpu {
     VkFramebuffer fb = nullptr;
   };
   
+  struct EventResource : CtxResource {
+    EventResource(VkEvent e) : handle {e} {}
+
+    void destroy(VkDevice device) override {
+      if (device && handle) {
+        vkDestroyEvent(device, handle, nullptr);
+      }
+    }
+
+    VkEvent handle;
+  };
+
   void CmdContext::begin() {
     VkCommandBufferBeginInfo info {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -317,6 +329,17 @@ namespace gpu {
 
   void CmdContext::bind_index_buffer(VkBuffer buffer, uint64_t offset, VkIndexType type) {
     vkCmdBindIndexBuffer(cmd, buffer, offset, type);
+  }
+
+  VkEvent CmdContext::signal_event(VkPipelineStageFlags stages) {
+    VkEventCreateInfo info {VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+    VkEvent event;
+    VKCHECK(vkCreateEvent(api_device, &info, nullptr, &event));
+    delayed_free.push_back(new EventResource{event});
+
+    vkCmdSetEvent(cmd, event, stages);
+
+    return event;
   }
 
 }

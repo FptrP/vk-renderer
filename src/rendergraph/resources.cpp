@@ -164,7 +164,9 @@ namespace rendergraph {
     auto &track = resources.get_resource_state(id);
 
     if (is_empty_state(track)) { //acquire resource
-      track.barrier_id = index;
+      track.barrier_id = 0;
+      track.last_access = index;
+      track.wait_for = INVALID_BARRIER_INDEX;
       track.dst = state;
       dirty_buffers.push_back(id);
       return;
@@ -173,6 +175,7 @@ namespace rendergraph {
     if (is_ro_access(track.dst.access) && is_ro_access(state.access)) {
       track.dst.access |= state.access;
       track.dst.stages |= state.stages;
+      track.last_access = index;
       return;
     }
     //uncompatible accesses in the same task
@@ -186,12 +189,18 @@ namespace rendergraph {
 
     BufferBarrierState buffer_barrier {};
     buffer_barrier.id = id;
+    buffer_barrier.wait_for = track.wait_for;
     buffer_barrier.src = track.src;
     buffer_barrier.dst = track.dst;
 
     barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
+    if (buffer_barrier.wait_for != INVALID_BARRIER_INDEX) {
+      barriers[buffer_barrier.wait_for].signal_mask |= buffer_barrier.src.stages;
+    }
 
     track.barrier_id = index;
+    track.wait_for = track.last_access;
+    track.last_access = index;
     track.src = track.dst;
     track.dst = state;
   }
@@ -200,13 +209,16 @@ namespace rendergraph {
     auto &track = resources.get_resource_state(id);
 
     if (is_empty_state(track)) { //acquire resource
-      track.barrier_id = index;
+      track.barrier_id = 0;
+      track.last_access = index;
+      track.wait_for = INVALID_BARRIER_INDEX;
       track.dst = state;
       dirty_images.push_back(id);
       return;
     }
 
     if (merge_states(track, state)) {
+      track.last_access = index;
       return;
     }
 
@@ -221,11 +233,17 @@ namespace rendergraph {
     
     ImageBarrierState image_barrier {};
     image_barrier.id = id;
+    image_barrier.wait_for = track.wait_for;
     image_barrier.src = track.src;
     image_barrier.dst = track.dst;
 
     barriers[track.barrier_id].image_barriers.push_back(image_barrier);
+    if (image_barrier.wait_for != INVALID_BARRIER_INDEX) {
+      barriers[image_barrier.wait_for].signal_mask |= image_barrier.src.stages;
+    }
 
+    track.wait_for = track.last_access;
+    track.last_access = index;
     track.barrier_id = index;
     track.src = track.dst;
     track.dst = state;
@@ -241,12 +259,19 @@ namespace rendergraph {
 
       ImageBarrierState image_barrier {};
       image_barrier.id = id;
+      image_barrier.wait_for = track.wait_for;
       image_barrier.src = track.src;
       image_barrier.dst = track.dst;
 
       barriers[track.barrier_id].image_barriers.push_back(image_barrier);
+      if (image_barrier.wait_for != INVALID_BARRIER_INDEX) {
+        barriers[image_barrier.wait_for].signal_mask |= image_barrier.src.stages;
+      }
+
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;
+      track.last_access = INVALID_BARRIER_INDEX;
+      track.wait_for = INVALID_BARRIER_INDEX;
     }
 
     for (auto id : dirty_buffers) {
@@ -258,12 +283,19 @@ namespace rendergraph {
 
       BufferBarrierState buffer_barrier {};
       buffer_barrier.id = id;
+      buffer_barrier.wait_for = track.wait_for;
       buffer_barrier.src = track.src;
       buffer_barrier.dst = track.dst;
 
       barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
+      if (buffer_barrier.wait_for != INVALID_BARRIER_INDEX) {
+        barriers[buffer_barrier.wait_for].signal_mask |= buffer_barrier.src.stages;
+      }
+
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;
+      track.last_access = INVALID_BARRIER_INDEX;
+      track.wait_for = INVALID_BARRIER_INDEX;
     }
 
     index = 0;
@@ -362,14 +394,15 @@ namespace rendergraph {
     }
   } 
 
-  void TrackingState::dump_barrier(uint32_t barrier_id) {
-    const auto &barrier = barriers.at(barrier_id);
+  void TrackingState::dump_barrier(const Barrier &barrier) {
+
+    //std::cout << "Task " << barrier_id << "\n";
 
     for (const auto &img_barrier : barrier.image_barriers) {
       std::cout << " - Image barrier " << "\n";
       std::cout << " --- id " << img_barrier.id.id.get_index() << "\n";
       std::cout << " --- mip = " << img_barrier.id.mip << " layer = " << img_barrier.id.layer << "\n";
-
+      std::cout << " --- wait for " << img_barrier.wait_for << "\n";
       std::cout << " --- src_stages : "; dump_stages(img_barrier.src.stages); std::cout << "\n";
       std::cout << " --- src_access : "; dump_access(img_barrier.src.access); std::cout << "\n";
       std::cout << " --- src_layout : "; dump_layout(img_barrier.src.layout); std::cout << "\n";
@@ -382,19 +415,23 @@ namespace rendergraph {
     for (const auto &buf_barrier : barrier.buffer_barriers) {
 
       std::cout << " - Memory barrier for buffer " << buf_barrier.id.get_index() << "\n";
-
+      std::cout << " --- wait for " << buf_barrier.wait_for << "\n";
       std::cout << " --- src_stages : "; dump_stages(buf_barrier.src.stages); std::cout << "\n";
       std::cout << " --- src_access : "; dump_access(buf_barrier.src.access); std::cout << "\n";
       
       std::cout << " --- dst_stages : "; dump_stages(buf_barrier.dst.stages); std::cout << "\n";
       std::cout << " --- dst_access : "; dump_access(buf_barrier.dst.access); std::cout << "\n";
     }
+
+    std::cout << "Signal = ";
+    dump_stages(barrier.signal_mask);
+    std::cout << "\n";
   }
 
   void TrackingState::dump_barriers() { 
     for (uint32_t i = 0; i < barriers.size(); i++) {
       std::cout << "Barrier " << i << "\n";
-      dump_barrier(i);
+      dump_barrier(barriers[i]);
     }
   } 
 
