@@ -4,7 +4,7 @@
 #include "rendergraph/rendergraph.hpp"
 #include "scene/camera.hpp"
 #include "scene/scene.hpp"
-#include "gpu/pipelines.hpp"
+#include "gpu/gpu.hpp"
 
 struct GbufferShaderData {
   glm::mat4 mvp;
@@ -12,7 +12,7 @@ struct GbufferShaderData {
 
 
 struct GbufferData {
-  GbufferData(gpu::PipelinePool &pipelines, rendergraph::RenderGraph &rendergraph, gpu::Device &device, uint32_t w, uint32_t h);
+  GbufferData(rendergraph::RenderGraph &rendergraph, uint32_t w, uint32_t h);
 
   rendergraph::ImageResourceId albedo;
   rendergraph::ImageResourceId normal;

@@ -1,14 +1,14 @@
 #include "util_passes.hpp"
 
+#include "gpu/gpu.hpp"
 
-
-void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, gpu::PipelinePool &pipelines, uint32_t mip, uint32_t layer) {
+void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, uint32_t mip, uint32_t layer) {
   struct Data {
     rendergraph::ImageViewId rt;
     gpu::GraphicsPipeline pipeline;  
   };
   
-  gpu::GraphicsPipeline pipeline {&pipelines};
+  gpu::GraphicsPipeline pipeline {gpu::create_graphics_pipeline()};
   pipeline.set_registers({});
   pipeline.set_vertex_input({});
   pipeline.set_program("perlin");
@@ -36,7 +36,7 @@ void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResou
 }
 
 
-void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, gpu::PipelinePool &pipelines) {
+void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image) {
   struct Data {};
 
   auto &desc = graph.get_descriptor(image); 

@@ -47,6 +47,7 @@ add_executable(main
   src/gpu/shader.cpp
   src/gpu/cmd_buffers.cpp
   src/gpu/samplers.cpp
+  src/gpu/gpu.cpp
 
   src/scene/scene.cpp
   src/lib/volk.c

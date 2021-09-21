@@ -3,7 +3,7 @@
 
 #include "rendergraph/rendergraph.hpp"
 
-void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, gpu::PipelinePool &pipelines, uint32_t mip, uint32_t layer);
-void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, gpu::PipelinePool &pipelines);
+void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, uint32_t mip, uint32_t layer);
+void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image);
 
 #endif

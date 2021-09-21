@@ -3,31 +3,51 @@
 
 #include "resources.hpp"
 #include "dynbuffer.hpp"
-#include "driver.hpp"
-
-#include <unordered_map>
 
 namespace gpu {
+  struct BaseBinding;
 
-  struct DescriptorWriter {
-    DescriptorWriter(VkDescriptorSet set) : target {set} {}
+  namespace internal {
+    inline void write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0);
+  }
 
-    template<typename T>
-    DescriptorWriter &bind_dynbuffer(uint32_t binding, const DynBuffer<T> &buf) {
-      buffers.push_back({binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, buf.api_buffer(), 0, sizeof(T)});
-      return *this;
+  struct BaseBinding {
+    BaseBinding(uint32_t base_binding, uint32_t dst_array_elem, uint32_t desc_count, VkDescriptorType type) {
+      desc_write.dstBinding = base_binding;
+      desc_write.dstArrayElement = dst_array_elem;
+      desc_write.descriptorCount = desc_count; 
+      desc_write.descriptorType = type;
+    }
+  protected:
+    VkWriteDescriptorSet desc_write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+
+    friend inline void internal::write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0);
+  };
+
+  
+  struct DynBufBinding : BaseBinding {
+    template <typename T>
+    DynBufBinding(uint32_t binding, const DynBuffer<T> &buf) 
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
+    {
+      info.buffer = buf.api_buffer();
+      info.offset = 0;
+      info.range = sizeof(T);
+
+      desc_write.pBufferInfo = &info;
     }
 
-    DescriptorWriter &bind_storage_buffer(uint32_t binding, const Buffer &buf) {
-      buffers.push_back({binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, buf.get_api_buffer(), 0, buf.get_size()});
-      return *this;
-    }
+  private:
+    VkDescriptorBufferInfo info {};
+  };
 
-    DescriptorWriter &bind_image(uint32_t binding, Image &image, VkSampler sampler) {
-      return bind_image(binding, image, sampler, 0, image.get_mip_levels());
-    }
-    
-    DescriptorWriter &bind_image(uint32_t binding, Image &image, VkSampler sampler, uint32_t base_mip, uint32_t mips_count) {
+  struct TextureBinding : BaseBinding {
+    TextureBinding(uint32_t binding, Image &image, VkSampler sampler, uint32_t base_mip, uint32_t mips_count)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER}
+    {
+      info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      info.sampler = sampler;
+
       ImageViewRange range {};
       range.type = VK_IMAGE_VIEW_TYPE_2D;
       range.base_layer = 0;
@@ -35,87 +55,40 @@ namespace gpu {
       range.layers_count = 1;
       range.mips_count = mips_count;
 
-      auto view = image.get_view(range);
-      images.push_back({binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, view, sampler});
-      return *this;
+      info.imageView = image.get_view(range);
+      desc_write.pImageInfo = &info;
     }
 
-    DescriptorWriter &bind_image(uint32_t binding, Image &image, const Sampler &sampler) {
-      return bind_image(binding, image, sampler.api_sampler());
-    }
-
-    void write(VkDevice device) {
-      std::vector<VkDescriptorBufferInfo> buffer_info;
-      std::vector<VkWriteDescriptorSet> writes;
-      
-      buffer_info.reserve(buffers.size());
-      writes.reserve(buffers.size());
-
-
-      for (const auto &buf : buffers) {
-        buffer_info.push_back({buf.buffer, buf.offset, buf.range});
-      }
-
-      for (uint32_t i = 0; i < buffers.size(); i++) {
-        VkWriteDescriptorSet w {};
-        w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        w.dstSet = target;
-        w.dstBinding = buffers[i].binding;
-        w.descriptorType = buffers[i].type;
-        w.descriptorCount = 1;
-        w.pBufferInfo = &buffer_info[i];
-        writes.push_back(w);
-      }
-      
-      vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-      buffer_info.clear();
-      writes.clear();
-
-      std::vector<VkDescriptorImageInfo> image_info;
-      for (const auto &img : images) {
-        image_info.push_back({img.sampler, img.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
-      }
-
-      for (uint32_t i = 0; i < images.size(); i++) {
-        VkWriteDescriptorSet w {};
-        w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        w.dstSet = target;
-        w.dstBinding = images[i].binding;
-        w.descriptorType = images[i].type;
-        w.descriptorCount = 1;
-        w.pImageInfo = &image_info[i];
-        writes.push_back(w);
-      }
-
-      vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-    }
-
+    TextureBinding(uint32_t binding, Image &image, VkSampler sampler) : TextureBinding {binding, image, sampler, 0, image.get_mip_levels()} {}
   private:
-    struct BufferBinding;
-    struct ImageBinding;
-    
-    VkDescriptorSet target;
-    std::vector<BufferBinding> buffers;
-    std::vector<ImageBinding> images;
-
-    struct BufferBinding {
-      uint32_t binding;
-      VkDescriptorType type;
-      VkBuffer buffer;
-      uint64_t offset;
-      uint64_t range;
-    };
-
-    struct ImageBinding {
-      uint32_t binding;
-      VkDescriptorType type;
-      VkImageView image;
-      VkSampler sampler;
-    };
-
+    VkDescriptorImageInfo info {};
   };
 
+  namespace internal {
+    inline void write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0) {
+      *ptr = b0.desc_write;
+      ptr->dstSet = set;
+    }
+  
+    template <typename... Bindings>
+    void write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0, const Bindings&... rest)
+    {
+      write_set_base(api_device, set, ptr, b0);
+      write_set_base(api_device, set, ptr + 1, rest...);
+    }
 
+    template <typename... Bindings> 
+    void write_set(VkDevice api_device, VkDescriptorSet set, const Bindings&... bindings) {
+      constexpr auto count = sizeof...(bindings);
+
+      VkWriteDescriptorSet writes[count];
+      write_set_base(api_device, set, writes, bindings...);
+
+      vkUpdateDescriptorSets(api_device, count, writes, 0, nullptr);
+    }
+  }
+
+  
 }
 
 #endif

@@ -26,7 +26,18 @@ namespace gpu {
   }
 
   PipelinePool::~PipelinePool() {
-    
+    for (auto &[k, v] : compute_pipelines) {
+      vkDestroyPipeline(api_device, v.handle, nullptr);
+    }
+
+    for (auto &[k, v] : graphics_pipelines) {
+      vkDestroyPipeline(api_device, v.handle, nullptr);
+    }
+
+    if (vk_cache) {
+      vkDestroyPipelineCache(api_device, vk_cache, nullptr);
+    }
+
     for (auto &subpass : allocated_subpasses) {
       if (!subpass.is_empty()) {
         vkDestroyRenderPass(api_device, subpass.handle, nullptr);

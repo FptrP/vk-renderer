@@ -13,6 +13,7 @@
 #include "sync_primitive.hpp"
 #include "dynbuffer.hpp"
 #include "samplers.hpp"
+#include "descriptors.hpp"
 
 namespace gpu {
 
@@ -174,6 +175,11 @@ namespace gpu {
     Surface(const Surface&) = delete;
     const Surface &operator=(const Surface&) = delete;
   };
+
+  template <typename... Bindings> 
+  void write_set(Device &device, VkDescriptorSet set, const Bindings&... bindings) {
+    internal::write_set(device.api_device(), set, bindings...);
+  }
 
 }
 

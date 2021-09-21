@@ -4,77 +4,91 @@
 #include <iostream>
 #include <memory>
 
-#include "gpu/driver.hpp"
-#include "gpu/shader.hpp"
+#include "gpu/gpu.hpp"
 #include "scene/scene.hpp"
-#include "base_app.hpp"
-#include "gpu/imgui_context.hpp"
-#include "gpu/pipelines.hpp"
-#include "gpu/samplers.hpp"
 
 #include "rendergraph/rendergraph.hpp"
 #include "backbuffer_subpass2.hpp"
 #include "gbuffer_subpass2.hpp"
 #include "util_passes.hpp"
 
-struct RGApp : SDLVulkanAppBase {
-  RGApp(uint32_t w, uint32_t h) 
-    : SDLVulkanAppBase {w, h}, pipelines {gpu_device().api_device()}, render_graph {gpu_device(), gpu_swapchain()},
-      scene {gpu_device()}
-  {
-    scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
-    scene.gen_buffers(gpu_device());
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                                       VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                                       const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                                       void* pUserData)  
+{
+  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+  return VK_FALSE;
+}
+
+struct AppInit {
+  AppInit(uint32_t width, uint32_t height) {
+    SDL_Init(SDL_INIT_EVERYTHING);
+    window = SDL_CreateWindow("T", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_VULKAN);
+
+    uint32_t count = 0;
+    SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
+    std::vector<const char*> ext; 
+    ext.resize(count);
+    SDL_Vulkan_GetInstanceExtensions(window, &count, ext.data());
+
+    gpu::InstanceConfig instance_info {};
+    instance_info.layers = {"VK_LAYER_KHRONOS_validation"};
+    instance_info.extensions.insert(ext.begin(), ext.end());
+    instance_info.extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+    gpu::init_instance(instance_info, debug_cb);
+
+    gpu::DeviceConfig device_info {};
+    device_info.extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+    gpu::init_device(device_info, {width, height}, [&](VkInstance instance){
+      VkSurfaceKHR surface;
+      SDL_Vulkan_CreateSurface(window, instance, &surface);
+      return surface;
+    });
   }
-  ~RGApp() {
-    vkDeviceWaitIdle(gpu_device().api_device());
+
+  ~AppInit() {
+    gpu::close();
+    SDL_DestroyWindow(window);
+    SDL_Quit();
   }
 
-  rendergraph::RenderGraph &get_graph() { return render_graph; }
-
-  void submit() {
-    render_graph.submit();
-  }
-
-  gpu::PipelinePool &get_pipelines() { return pipelines; }
-  scene::Scene &get_scene() { return scene; }
-private:
-  gpu::PipelinePool pipelines;
-  rendergraph::RenderGraph render_graph;
-  scene::Scene scene;
-  scene::Camera camera;
-
-  glm::mat4 projection;
-  glm::mat4 view_proj;
-}; 
-
-#include <iostream>
+  SDL_Window *window;
+};
 
 int main() {
-  RGApp app {800, 600};
-  auto &pool = app.get_pipelines();
-  pool.create_program("triangle", {
+  AppInit app_init {800, 600};
+
+  gpu::create_program("triangle", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/triangle/frag.spv", "main"}});
   
-  pool.create_program("texdraw", {
+  gpu::create_program("texdraw", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/frag.spv", "main"}});
   
-  pool.create_program("gbuf", {
+  gpu::create_program("gbuf", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/default_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/default_frag.spv", "main"}});
 
-  pool.create_program("perlin", {
+  gpu::create_program("perlin", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/frag.spv", "main"}
   });
 
-  gpu::SamplerPool samplers {app.get_context().device.api_device()};
+  rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
+  scene::Scene scene {gpu::app_device()};
 
-  GbufferData gbuffer {pool, app.get_graph(), app.get_context().device, 800, 600};
-  auto sampler = samplers.get_sampler(gpu::DEFAULT_SAMPLER);
+  scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
+  scene.gen_buffers(gpu::app_device());
 
-  auto noise_image = app.get_graph().create_image(
+
+  GbufferData gbuffer {render_graph, 800, 600};
+  auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+
+  auto noise_image = render_graph.create_image(
     VK_IMAGE_TYPE_2D, {
       VK_FORMAT_R8G8B8A8_SRGB,
       VK_IMAGE_ASPECT_COLOR_BIT,
@@ -87,8 +101,8 @@ int main() {
     VK_IMAGE_TILING_OPTIMAL, 
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
-  gen_perlin_noise2D(app.get_graph(), noise_image, app.get_pipelines(), 0, 0);
-  gen_mipmaps(app.get_graph(), noise_image, app.get_pipelines());
+  gen_perlin_noise2D(render_graph, noise_image, 0, 0);
+  gen_mipmaps(render_graph, noise_image);
 
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
@@ -116,13 +130,12 @@ int main() {
 
 
     mvp = projection * camera.get_view_mat();
-    add_gbuffer_subpass(gbuffer, app.get_graph(), app.get_scene(), mvp, noise_image, sampler);
-    add_backbuffer_subpass(gbuffer.albedo, sampler, app.get_graph(), pool);
-    app.submit(); 
+    add_gbuffer_subpass(gbuffer, render_graph, scene, mvp, noise_image, sampler);
+    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
+    render_graph.submit(); 
   }
 
-  vkDeviceWaitIdle(app.get_context().device.api_device());
-
+  vkDeviceWaitIdle(gpu::app_device().api_device());
 
   return 0;
 }

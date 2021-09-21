@@ -37,6 +37,12 @@ namespace gpu {
     }
   }
 
+  const SamplerPool &SamplerPool::operator=(SamplerPool &&pool) {
+    std::swap(device, pool.device);
+    samplers = std::move(pool.samplers);
+    return *this;
+  }
+
   VkSampler SamplerPool::get_sampler(const VkSamplerCreateInfo &info) {
     auto it = samplers.find(info);
     if (it != samplers.end()) {

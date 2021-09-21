@@ -1,7 +1,8 @@
 #include "gbuffer_subpass2.hpp"
 
-GbufferData::GbufferData(gpu::PipelinePool &pipelines, rendergraph::RenderGraph &rendergraph, gpu::Device &device, uint32_t w, uint32_t h)
-  : ubo {device.create_dynbuffer<GbufferShaderData>(rendergraph.get_frames_count())}
+GbufferData::GbufferData(rendergraph::RenderGraph &rendergraph, uint32_t w, uint32_t h)
+  : pipeline {gpu::create_graphics_pipeline()},
+    ubo {gpu::create_dynbuffer<GbufferShaderData>(rendergraph.get_frames_count())}
 {
 
   auto tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -19,7 +20,6 @@ GbufferData::GbufferData(gpu::PipelinePool &pipelines, rendergraph::RenderGraph 
   regs.depth_stencil.depthTestEnable = VK_TRUE;
   regs.depth_stencil.depthWriteEnable = VK_TRUE;
   
-  pipeline.attach(pipelines);
   pipeline.set_program("gbuf");
   pipeline.set_registers(regs);
   pipeline.set_vertex_input(scene::get_vertex_input());    
@@ -53,10 +53,10 @@ void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergrap
     [=, &gbuf, &scene](GbuffResources &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       
       auto set = resources.allocate_set(gbuf.pipeline.get_layout(0));
-      gpu::DescriptorWriter writer {set};
-      writer.bind_dynbuffer(0, gbuf.ubo);
-      writer.bind_image(1, resources.get_image(data.texture), data.image_sampler);
-      writer.write(resources.get_gpu().api_device());
+
+      gpu::write_set(resources.get_gpu(), set,
+        gpu::DynBufBinding {0, gbuf.ubo},
+        gpu::TextureBinding {1, resources.get_image(data.texture), data.image_sampler});
 
       *gbuf.ubo.get_mapped_ptr(resources.get_frame_index()) = {mvp};
 

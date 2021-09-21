@@ -63,7 +63,9 @@ namespace gpu {
     return {handle, callback};
   }
 
-  DebugMessenger::DebugMessenger(VkInstance instance, PFN_vkDebugUtilsMessengerCallbackEXT callback) {
+  DebugMessenger::DebugMessenger(VkInstance instance, PFN_vkDebugUtilsMessengerCallbackEXT callback)
+    : base {instance}
+  {
     VkDebugUtilsMessengerCreateInfoEXT info {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
       .pNext = nullptr,

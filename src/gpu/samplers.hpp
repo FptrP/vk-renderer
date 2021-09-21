@@ -26,10 +26,11 @@ namespace gpu {
 
   struct SamplerPool {
     SamplerPool(VkDevice dev) : device {dev} {}
+    SamplerPool(SamplerPool &&pool) : device {pool.device}, samplers {std::move(pool.samplers)} { pool.device = nullptr; }
     ~SamplerPool();
 
     VkSampler get_sampler(const VkSamplerCreateInfo &info);
-
+    const SamplerPool &operator=(SamplerPool &&pool);
   private:
     SamplerPool(const SamplerPool &) = delete;
     SamplerPool &operator=(const SamplerPool &) = delete;

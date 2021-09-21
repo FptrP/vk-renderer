@@ -3,8 +3,8 @@
 
 #include "rendergraph/rendergraph.hpp"
 #include "scene/camera.hpp"
-#include "gpu/pipelines.hpp"
+#include "gpu/gpu.hpp"
 
-void add_backbuffer_subpass(rendergraph::ImageResourceId draw_img, VkSampler sampler, rendergraph::RenderGraph &graph, gpu::PipelinePool &ppol);
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler);
 
 #endif

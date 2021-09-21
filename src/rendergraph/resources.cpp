@@ -144,6 +144,40 @@ namespace rendergraph {
     return false;
   }
 
+  static void flush_barrier(std::vector<Barrier> &barriers, const ImageSubresourceId &id, const ImageTrackingState &track) {
+    if (barriers.size() <= track.barrier_id) {
+      barriers.resize(track.barrier_id + 1);
+    }
+    
+    ImageBarrierState image_barrier {};
+    image_barrier.id = id;
+    image_barrier.wait_for = track.wait_for;
+    image_barrier.src = track.src;
+    image_barrier.dst = track.dst;
+
+    barriers[track.barrier_id].image_barriers.push_back(image_barrier);
+    if (image_barrier.wait_for != INVALID_BARRIER_INDEX) {
+      barriers[image_barrier.wait_for].signal_mask |= image_barrier.src.stages;
+    }
+  }
+
+  static void flush_barrier(std::vector<Barrier> &barriers, const BufferResourceId &id, const BufferTrackingState &track) {
+    if (barriers.size() <= track.barrier_id) {
+      barriers.resize(track.barrier_id + 1);
+    }
+
+    BufferBarrierState buffer_barrier {};
+    buffer_barrier.id = id;
+    buffer_barrier.wait_for = track.wait_for;
+    buffer_barrier.src = track.src;
+    buffer_barrier.dst = track.dst;
+
+    barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
+    if (buffer_barrier.wait_for != INVALID_BARRIER_INDEX) {
+      barriers[buffer_barrier.wait_for].signal_mask |= buffer_barrier.src.stages;
+    }
+  }
+
   static bool is_empty_state(const BufferTrackingState &track) {
     if (track.barrier_id == INVALID_BARRIER_INDEX) {
       return true;
@@ -183,20 +217,7 @@ namespace rendergraph {
       throw std::runtime_error {"Incompatible buffer usage in task"};
     }
 
-    if (barriers.size() <= track.barrier_id) {
-      barriers.resize(track.barrier_id + 1);
-    }
-
-    BufferBarrierState buffer_barrier {};
-    buffer_barrier.id = id;
-    buffer_barrier.wait_for = track.wait_for;
-    buffer_barrier.src = track.src;
-    buffer_barrier.dst = track.dst;
-
-    barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
-    if (buffer_barrier.wait_for != INVALID_BARRIER_INDEX) {
-      barriers[buffer_barrier.wait_for].signal_mask |= buffer_barrier.src.stages;
-    }
+    flush_barrier(barriers, id, track);
 
     track.barrier_id = index;
     track.wait_for = track.last_access;
@@ -227,20 +248,7 @@ namespace rendergraph {
       throw std::runtime_error {"Incompatible image usage in task"};
     }
 
-    if (barriers.size() <= track.barrier_id) {
-      barriers.resize(track.barrier_id + 1);
-    }
-    
-    ImageBarrierState image_barrier {};
-    image_barrier.id = id;
-    image_barrier.wait_for = track.wait_for;
-    image_barrier.src = track.src;
-    image_barrier.dst = track.dst;
-
-    barriers[track.barrier_id].image_barriers.push_back(image_barrier);
-    if (image_barrier.wait_for != INVALID_BARRIER_INDEX) {
-      barriers[image_barrier.wait_for].signal_mask |= image_barrier.src.stages;
-    }
+    flush_barrier(barriers, id, track);
 
     track.wait_for = track.last_access;
     track.last_access = index;
@@ -253,20 +261,7 @@ namespace rendergraph {
     for (auto id : dirty_images) {
       auto &track = resources.get_resource_state(id);
 
-      if (barriers.size() <= track.barrier_id) {
-        barriers.resize(track.barrier_id + 1);
-      }
-
-      ImageBarrierState image_barrier {};
-      image_barrier.id = id;
-      image_barrier.wait_for = track.wait_for;
-      image_barrier.src = track.src;
-      image_barrier.dst = track.dst;
-
-      barriers[track.barrier_id].image_barriers.push_back(image_barrier);
-      if (image_barrier.wait_for != INVALID_BARRIER_INDEX) {
-        barriers[image_barrier.wait_for].signal_mask |= image_barrier.src.stages;
-      }
+      flush_barrier(barriers, id, track);
 
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;
@@ -281,16 +276,7 @@ namespace rendergraph {
         barriers.resize(track.barrier_id + 1);
       }
 
-      BufferBarrierState buffer_barrier {};
-      buffer_barrier.id = id;
-      buffer_barrier.wait_for = track.wait_for;
-      buffer_barrier.src = track.src;
-      buffer_barrier.dst = track.dst;
-
-      barriers[track.barrier_id].buffer_barriers.push_back(buffer_barrier);
-      if (buffer_barrier.wait_for != INVALID_BARRIER_INDEX) {
-        barriers[buffer_barrier.wait_for].signal_mask |= buffer_barrier.src.stages;
-      }
+      flush_barrier(barriers, id, track);
 
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;

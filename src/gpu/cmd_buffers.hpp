@@ -155,8 +155,6 @@ namespace gpu {
     std::vector<CtxResource*> delayed_free {};
 
     void flush_framebuffer_state(VkRenderPass renderpass);
-    //CmdContext(const CmdContext &) = delete;
-    //CmdContext(CmdContext &&) = default;
   };
 
 }

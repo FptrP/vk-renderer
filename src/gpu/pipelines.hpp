@@ -266,6 +266,8 @@ namespace gpu {
 
     void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);
 
+    PipelinePool(const PipelinePool &) = delete;
+    const PipelinePool &operator=(const PipelinePool &) = delete;
   private:
     
     struct ShaderProgram {
