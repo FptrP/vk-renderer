@@ -83,14 +83,9 @@ int main() {
   });
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
-  scene::Scene scene {gpu::app_device()};
-
-  scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
-  scene.gen_buffers(gpu::app_device());
-
   auto transfer_pool = gpu::app_device().new_transfer_pool();
 
-  auto color_image = scene::load_image_rgba8(gpu::app_device(), transfer_pool, "assets/gltf/suzanne/Suzanne_BaseColor.png"); 
+  auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
 
   GbufferData gbuffer {render_graph, WIDTH, HEIGHT};
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
@@ -116,7 +111,6 @@ int main() {
   glm::mat4 mvp = projection * camera.get_view_mat();
   
   bool quit = false;
-  bool draw_tex = false;
   auto ticks = SDL_GetTicks();
 
   while (!quit) {
@@ -124,9 +118,6 @@ int main() {
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
         quit = true;
-      }
-      if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
-        draw_tex = !draw_tex;
       }
 
       camera.process_event(event);
@@ -141,12 +132,7 @@ int main() {
 
     mvp = projection * camera.get_view_mat();
     add_gbuffer_subpass(gbuffer, render_graph, scene, mvp, noise_image, sampler);
-    if (draw_tex) {
-      add_backbuffer_subpass(render_graph, color_image, sampler);
-    } else {
-      add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
-    }
-    
+    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
     render_graph.submit(); 
   }
 

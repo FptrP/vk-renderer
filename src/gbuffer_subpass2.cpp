@@ -1,5 +1,7 @@
 #include "gbuffer_subpass2.hpp"
 
+#include <iostream>
+
 GbufferData::GbufferData(rendergraph::RenderGraph &rendergraph, uint32_t w, uint32_t h)
   : pipeline {gpu::create_graphics_pipeline()},
     ubo {gpu::create_dynbuffer<GbufferShaderData>(rendergraph.get_frames_count())}
@@ -29,7 +31,7 @@ GbufferData::GbufferData(rendergraph::RenderGraph &rendergraph, uint32_t w, uint
   height = h;
 }
 
-void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::Scene &scene, glm::mat4 mvp, rendergraph::ImageResourceId img, VkSampler sampler) {
+void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergraph, scene::CompiledScene &scene, glm::mat4 mvp, rendergraph::ImageResourceId img, VkSampler sampler) {
 
   struct GbuffResources {
     rendergraph::ImageViewId albedo;
@@ -54,10 +56,6 @@ void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergrap
       
       auto set = resources.allocate_set(gbuf.pipeline.get_layout(0));
 
-      gpu::write_set(resources.get_gpu(), set,
-        gpu::DynBufBinding {0, gbuf.ubo},
-        gpu::TextureBinding {1, resources.get_image(data.texture), data.image_sampler});
-
       *gbuf.ubo.get_mapped_ptr(resources.get_frame_index()) = {mvp};
 
       uint32_t ubo_offset = gbuf.ubo.get_offset(resources.get_frame_index());
@@ -69,10 +67,17 @@ void add_gbuffer_subpass(GbufferData &gbuf, rendergraph::RenderGraph &rendergrap
         resources.get_view(data.depth)
       });
 
-      auto vbuf = scene.get_vertex_buffer().get_api_buffer();
-      auto ibuf = scene.get_index_buffer().get_api_buffer();
-      const auto &mesh = scene.get_meshes().at(0);
+      auto vbuf = scene.vertex_buffer.get_api_buffer();
+      auto ibuf = scene.index_buffer.get_api_buffer();
+      const auto &mesh = scene.meshes.at(0);
       
+      auto tex_index = scene.materials[mesh.material_index].albedo_tex_index; 
+
+      gpu::write_set(resources.get_gpu(), set,
+        gpu::DynBufBinding {0, gbuf.ubo},
+        gpu::TextureBinding {1, scene.images[tex_index], data.image_sampler});  
+
+
       cmd.bind_pipeline(gbuf.pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.clear_depth_attachment(1.f);

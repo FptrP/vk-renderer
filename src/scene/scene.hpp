@@ -29,33 +29,33 @@ namespace scene {
     uint32_t vertex_offset;
     uint32_t index_offset;
     uint32_t index_count;
+    uint32_t material_index;
   };
 
-  struct Scene {
-    Scene (gpu::Device &device) : vertex_buffer {device.new_buffer()}, index_buffer {device.new_buffer()} {}
+  constexpr uint32_t INVALID_TEXTURE = UINT32_MAX;
 
-    void load(const std::string &path, const std::string &folder);
-    void gen_buffers(gpu::Device &device);
+  struct Material {
+    uint32_t albedo_tex_index = INVALID_TEXTURE;
+    uint32_t metalic_roughness_index = INVALID_TEXTURE;
+  };
 
-    const gpu::Buffer &get_vertex_buffer() const { return  vertex_buffer; }
-    const gpu::Buffer &get_index_buffer() const { return  index_buffer; }
-    const std::vector<Mesh> &get_meshes() const { return meshes; }
-     
-  private:
-    void process_meshes(const aiScene *scene);
-    void process_materials(const aiScene *scene);
-    void process_objects(const aiNode *node, glm::mat4 transform);
+  struct CompiledScene {
+    CompiledScene(gpu::Device &device) : vertex_buffer {device.new_buffer()}, index_buffer {device.new_buffer()} {}
+
+    CompiledScene(CompiledScene &&) = default;
+    CompiledScene &operator=(CompiledScene &&) = default;
+
+    CompiledScene(CompiledScene &) = delete;
+    CompiledScene &operator=(CompiledScene &) = delete;
 
     std::vector<Mesh> meshes;
-    std::vector<Vertex> verts;
-    std::vector<uint32_t> indexes;
-
+    std::vector<Material> materials;
     gpu::Buffer vertex_buffer;
     gpu::Buffer index_buffer;
-
-    std::string model_path;
+    std::vector<gpu::Image> images;
   };
 
+  CompiledScene load_gltf_scene(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder);
   gpu::Image load_image_rgba8(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const char *path);
 
 }

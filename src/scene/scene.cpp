@@ -2,6 +2,7 @@
 
 
 #include <iostream>
+#include <unordered_map>
 
 namespace scene {
 
@@ -33,17 +34,7 @@ namespace scene {
     return vinput;
   }
 
-  void Scene::load(const std::string &path, const std::string &folder) {
-    Assimp::Importer importer {};
-    auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);
-    model_path = folder;
-
-    //process_materials(aiscene);
-    process_meshes(aiscene);
-    //process_objects(aiscene->mRootNode, glm::identity<glm::mat4>());
-  }
-
-  void Scene::process_meshes(const aiScene *scene) {
+  static void load_verts_memory(const aiScene *scene, std::vector<Mesh> &meshes, std::vector<Vertex> &verts, std::vector<uint32_t> &indexes) {
     const uint32_t meshes_count = scene->mNumMeshes;
     uint32_t verts_count = 0, index_count = 0;
 
@@ -65,6 +56,7 @@ namespace scene {
       mesh.vertex_offset = verts.size();
       mesh.index_offset = indexes.size();
       mesh.index_count = scene_mesh->mNumFaces * 3;
+      mesh.material_index = scene_mesh->mMaterialIndex;
       meshes.push_back(mesh);
 
       for (uint32_t j = 0; j < scene_mesh->mNumVertices; j++) {
@@ -89,25 +81,9 @@ namespace scene {
 
     std::cout << "Total " << meshes_count << " meshes, " << verts_count << " vertices " << index_count << " indexes\n";
   }
-
-  static void copy_data(gpu::Device &device, VkCommandBuffer cmd, gpu::Buffer &dst, gpu::Buffer &transfer, uint32_t byte_count, uint8_t *data) {
+  
+  static void copy_data(gpu::TransferCmdPool &transfer_pool, gpu::Buffer &dst, gpu::Buffer &transfer, uint32_t byte_count, uint8_t *data) {
     
-    auto queue = device.api_queue();
-    auto fence = device.new_fence();
-    auto api_fence = static_cast<VkFence>(fence);
-
-    VkSubmitInfo submit_info {
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .pNext = nullptr,
-      .waitSemaphoreCount = 0,
-      .pWaitSemaphores = nullptr,
-      .pWaitDstStageMask = nullptr,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &cmd,
-      .signalSemaphoreCount = 0,
-      .pSignalSemaphores = nullptr
-    };
-
     VkCommandBufferBeginInfo begin_info {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .pNext = nullptr,
@@ -133,35 +109,108 @@ namespace scene {
       remaining_size -= chunk;
       offset += chunk;
 
-      vkResetFences(device.api_device(), 1, &api_fence);
-      vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+      auto cmd = transfer_pool.get_cmd_buffer();
+
       vkBeginCommandBuffer(cmd, &begin_info);
       vkCmdCopyBuffer(cmd, transfer.get_api_buffer(), dst.get_api_buffer(), 1, &region);
       vkEndCommandBuffer(cmd);
-      vkQueueSubmit(queue, 1, &submit_info, api_fence);
-      vkWaitForFences(device.api_device(), 1, &api_fence, VK_TRUE, ~0ull);
+      transfer_pool.submit_and_wait();
     }
 
   }
 
+  static void load_verts(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const aiScene *scene, CompiledScene &out_scene) {
+    std::vector<Vertex> cpu_verts;
+    std::vector<uint32_t> cpu_indexes;
+    load_verts_memory(scene, out_scene.meshes, cpu_verts, cpu_indexes);
 
-  void Scene::gen_buffers(gpu::Device &device) {
-    vertex_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(Vertex) * verts.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(uint32_t) * indexes.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    const uint64_t verts_size = sizeof(Vertex) * cpu_verts.size();
+    const uint64_t index_size = sizeof(uint32_t) * cpu_indexes.size();
+
+    out_scene.vertex_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, verts_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    out_scene.index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
     const uint32_t TRANSFER_SIZE = 10 * 1024;
     auto transfer_buffer = device.new_buffer();
     transfer_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-
-    auto pool = device.new_command_pool();
-    auto cmd = pool.allocate();
     
-    copy_data(device, cmd, vertex_buffer, transfer_buffer, vertex_buffer.get_size(), (uint8_t*)verts.data());
-    copy_data(device, cmd, index_buffer, transfer_buffer, index_buffer.get_size(), (uint8_t*)indexes.data());
+    copy_data(transfer_pool, out_scene.vertex_buffer, transfer_buffer, verts_size, (uint8_t*)cpu_verts.data());
+    copy_data(transfer_pool, out_scene.index_buffer, transfer_buffer, index_size, (uint8_t*)cpu_indexes.data());
 
-    verts.clear();
-    indexes.clear();
+    cpu_verts.clear();
+    cpu_indexes.clear();
   }
 
+  struct MaterialDesc {
+    std::string albedo_path;
+    std::string mr_path;
+  };
 
+  static uint32_t load_scene_image(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, std::unordered_map<std::string, uint32_t> &loaded_images, CompiledScene &out_scene) {
+    if (path.empty()) {
+      return UINT32_MAX;
+    }
+
+    auto iter = loaded_images.find(path);
+    if (iter != loaded_images.end()) {
+      return iter->second;
+    }
+    
+    auto img = load_image_rgba8(device, transfer_pool, path.c_str());
+    auto index = out_scene.images.size();
+    out_scene.images.push_back(std::move(img));
+    loaded_images[path] = index;
+    
+    return index;
+  }
+
+  static void load_materials(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const aiScene *scene, const std::string &model_path, CompiledScene &out_scene) {
+    out_scene.materials.reserve(scene->mNumMaterials);
+
+    std::cout << "Materials count " << scene->mNumMaterials << "\n";
+    
+    std::unordered_map<std::string, uint32_t> loaded_images;  
+
+    for (uint32_t i = 0; i < scene->mNumMaterials; i++) {
+      const auto &scene_mt = scene->mMaterials[i];
+      uint32_t count = scene_mt->GetTextureCount(aiTextureType_DIFFUSE);
+
+      MaterialDesc mat {};
+
+      if (count) {
+        aiString path;
+        scene_mt->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+        mat.albedo_path = path.C_Str();
+      
+        if (mat.albedo_path.length()) {
+          mat.albedo_path = model_path + mat.albedo_path;
+        }
+
+        path.Clear();
+
+        scene_mt->GetTexture(aiTextureType_UNKNOWN, 0, &path);
+        mat.mr_path = path.C_Str();
+      
+        if (mat.mr_path.length()) {
+          mat.mr_path = model_path + mat.mr_path;
+        }
+      } 
+
+      Material material {};
+      material.albedo_tex_index = load_scene_image(device, transfer_pool, mat.albedo_path, loaded_images, out_scene);
+      material.metalic_roughness_index = load_scene_image(device, transfer_pool, mat.mr_path, loaded_images, out_scene);
+      out_scene.materials.push_back(material);
+    }
+
+  }
+
+  CompiledScene load_gltf_scene(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder) {
+    CompiledScene result_scene {device};
+
+    Assimp::Importer importer {};
+    auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);
+    load_verts(device, transfer_pool, aiscene, result_scene);
+    load_materials(device, transfer_pool, aiscene, folder, result_scene);
+    return result_scene;
+  }
 }
