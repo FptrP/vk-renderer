@@ -56,6 +56,7 @@ namespace scene {
     std::string model_path;
   };
 
+  gpu::Image load_image_rgba8(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const char *path);
 
 }
 

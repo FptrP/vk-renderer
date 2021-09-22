@@ -6,5 +6,5 @@
 #include "gpu/gpu.hpp"
 
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler);
-
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler);
 #endif

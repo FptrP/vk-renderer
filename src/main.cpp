@@ -12,10 +12,11 @@
 #include "gbuffer_subpass2.hpp"
 #include "util_passes.hpp"
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                       VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                       const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                       void* pUserData)  
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
+  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+  VkDebugUtilsMessageTypeFlagsEXT messageType,
+  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+  void* pUserData)  
 {
   std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
   return VK_FALSE;
@@ -58,8 +59,11 @@ struct AppInit {
   SDL_Window *window;
 };
 
+const uint32_t WIDTH = 1280;
+const uint32_t HEIGHT = 720;
+
 int main() {
-  AppInit app_init {800, 600};
+  AppInit app_init {WIDTH, HEIGHT};
 
   gpu::create_program("triangle", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/vert.spv", "main"},
@@ -84,8 +88,11 @@ int main() {
   scene.load("assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
   scene.gen_buffers(gpu::app_device());
 
+  auto transfer_pool = gpu::app_device().new_transfer_pool();
 
-  GbufferData gbuffer {render_graph, 800, 600};
+  auto color_image = scene::load_image_rgba8(gpu::app_device(), transfer_pool, "assets/gltf/suzanne/Suzanne_BaseColor.png"); 
+
+  GbufferData gbuffer {render_graph, WIDTH, HEIGHT};
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
   auto noise_image = render_graph.create_image(
@@ -105,11 +112,11 @@ int main() {
   gen_mipmaps(render_graph, noise_image);
 
   scene::Camera camera;
-  glm::mat4 projection = glm::perspective(glm::radians(60.f), 800.f/600.f, 0.01f, 10.f);
+  glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.01f, 10.f);
   glm::mat4 mvp = projection * camera.get_view_mat();
   
   bool quit = false;
-
+  bool draw_tex = false;
   auto ticks = SDL_GetTicks();
 
   while (!quit) {
@@ -117,6 +124,9 @@ int main() {
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
         quit = true;
+      }
+      if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
+        draw_tex = !draw_tex;
       }
 
       camera.process_event(event);
@@ -131,7 +141,12 @@ int main() {
 
     mvp = projection * camera.get_view_mat();
     add_gbuffer_subpass(gbuffer, render_graph, scene, mvp, noise_image, sampler);
-    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
+    if (draw_tex) {
+      add_backbuffer_subpass(render_graph, color_image, sampler);
+    } else {
+      add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
+    }
+    
     render_graph.submit(); 
   }
 

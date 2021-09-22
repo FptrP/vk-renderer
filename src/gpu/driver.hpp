@@ -92,7 +92,8 @@ namespace gpu {
     CmdBufferPool new_command_pool() const { return CmdBufferPool {logical_device, queue_family_index}; }
     Semaphore new_semaphore() const { return {logical_device}; }
     Fence new_fence(bool signaled = false) const { return {logical_device, signaled}; }
-
+    TransferCmdPool new_transfer_pool() const { return TransferCmdPool {logical_device, queue_family_index, queue}; }
+    
     Swapchain create_swapchain(VkSurfaceKHR surface, VkExtent2D window_extent, VkImageUsageFlags usage);
     std::vector<Image> get_swapchain_images(const Swapchain &swapchain);
 

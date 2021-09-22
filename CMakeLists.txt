@@ -50,6 +50,8 @@ add_executable(main
   src/gpu/gpu.cpp
 
   src/scene/scene.cpp
+  src/scene/images.cpp
+  
   src/lib/volk.c
   ${spirv-cross-sources}
   ${imgui-sources}

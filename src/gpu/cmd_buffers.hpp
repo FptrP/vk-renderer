@@ -157,6 +157,28 @@ namespace gpu {
     void flush_framebuffer_state(VkRenderPass renderpass);
   };
 
+  struct TransferCmdPool {
+    TransferCmdPool(VkDevice device, uint32_t queue_family, VkQueue queue);
+    TransferCmdPool(TransferCmdPool &&pool);
+    ~TransferCmdPool();
+
+    VkCommandBuffer get_cmd_buffer();
+    void submit_and_wait();
+
+    const TransferCmdPool &operator=(TransferCmdPool &&pool);
+
+  private:
+    VkDevice api_device {nullptr};
+    VkQueue api_queue {nullptr};
+    VkCommandPool pool {nullptr};
+    VkCommandBuffer cmd {nullptr};
+    VkFence fence {nullptr};
+    bool buffer_acquired = false;
+    
+    TransferCmdPool(TransferCmdPool &) = delete;
+    const TransferCmdPool &operator=(const TransferCmdPool &pool);
+  };
+
 }
 
 #endif

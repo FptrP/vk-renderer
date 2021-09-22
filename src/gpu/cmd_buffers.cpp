@@ -342,4 +342,94 @@ namespace gpu {
     return event;
   }
 
+
+
+  TransferCmdPool::TransferCmdPool(VkDevice device, uint32_t queue_family, VkQueue queue)
+    : api_device {device}, api_queue {queue}
+  {
+    VkCommandPoolCreateInfo pool_info {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT|VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+      .queueFamilyIndex = queue_family
+    };
+
+    VKCHECK(vkCreateCommandPool(api_device, &pool_info, nullptr, &pool));
+
+    VkCommandBufferAllocateInfo alloc_info {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .pNext = nullptr,
+      .commandPool = pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1
+    };
+
+    VKCHECK(vkAllocateCommandBuffers(api_device, &alloc_info, &cmd));
+
+    VkFenceCreateInfo fence_info {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VKCHECK(vkCreateFence(api_device, &fence_info, nullptr, &fence));
+
+  }
+
+  TransferCmdPool::TransferCmdPool(TransferCmdPool &&tpool)
+    : api_device {tpool.api_device}, api_queue {tpool.api_queue},
+      pool {tpool.pool}, cmd {tpool.cmd}, fence {tpool.fence},
+      buffer_acquired {tpool.buffer_acquired}
+  {
+    tpool.api_device = nullptr;
+  }
+
+  TransferCmdPool::~TransferCmdPool() {
+    if (api_device && fence) {
+      vkDestroyFence(api_device, fence, nullptr);
+    }
+
+    if (api_device && pool) {
+      vkDestroyCommandPool(api_device, pool, nullptr);
+    }
+  }
+
+  VkCommandBuffer TransferCmdPool::get_cmd_buffer() {
+    if (buffer_acquired) {
+      throw std::runtime_error {"Buffer is already acquired"};
+    }
+    buffer_acquired = true;
+    
+    return cmd;
+  }
+  void TransferCmdPool::submit_and_wait() {
+    if (!buffer_acquired) {
+      return;
+    }
+
+    VkSubmitInfo submit_info {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .pNext = nullptr,
+      .waitSemaphoreCount = 0,
+      .pWaitSemaphores = nullptr,
+      .pWaitDstStageMask = nullptr,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &cmd,
+      .signalSemaphoreCount = 0,
+      .pSignalSemaphores = nullptr
+    };
+
+    VKCHECK(vkQueueSubmit(api_queue, 1, &submit_info, fence));
+    VKCHECK(vkWaitForFences(api_device, 1, &fence, VK_TRUE, UINT64_MAX));
+    VKCHECK(vkResetFences(api_device, 1, &fence));
+    VKCHECK(vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
+
+    buffer_acquired = false;
+  }
+
+  const TransferCmdPool &TransferCmdPool::operator=(TransferCmdPool &&tpool) {
+    std::swap(api_device, tpool.api_device);
+    std::swap(api_queue, tpool.api_queue);
+    std::swap(pool, tpool.pool);
+    std::swap(cmd, tpool.cmd);
+    std::swap(fence, tpool.fence);
+    std::swap(buffer_acquired, tpool.buffer_acquired);
+    return *this;
+  }
+
 }
