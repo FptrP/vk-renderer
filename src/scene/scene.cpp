@@ -204,6 +204,28 @@ namespace scene {
 
   }
 
+  static void load_nodes(const aiNode *node, std::unique_ptr<Node> &out_node)
+  {
+    if (!node) return;
+
+    out_node.reset(new Node {});
+
+    out_node->transform[0] = glm::vec4{node->mTransformation.a1, node->mTransformation.b1, node->mTransformation.c1, node->mTransformation.d1};
+    out_node->transform[1] = glm::vec4{node->mTransformation.a2, node->mTransformation.b2, node->mTransformation.c2, node->mTransformation.d2};
+    out_node->transform[2] = glm::vec4{node->mTransformation.a3, node->mTransformation.b3, node->mTransformation.c3, node->mTransformation.d3};
+    out_node->transform[3] = glm::vec4{node->mTransformation.a4, node->mTransformation.b4, node->mTransformation.c4, node->mTransformation.d4};
+
+    for (uint32_t i = 0; i < node->mNumMeshes; i++) {
+      out_node->meshes.push_back(node->mMeshes[i]);
+    }
+
+    out_node->children.resize(node->mNumChildren);
+
+    for (uint32_t i = 0; i < node->mNumChildren; i++) {
+      load_nodes(node->mChildren[i], out_node->children[i]);
+    }
+  }
+
   CompiledScene load_gltf_scene(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder) {
     CompiledScene result_scene {device};
 
@@ -211,6 +233,7 @@ namespace scene {
     auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);
     load_verts(device, transfer_pool, aiscene, result_scene);
     load_materials(device, transfer_pool, aiscene, folder, result_scene);
+    load_nodes(aiscene->mRootNode, result_scene.root);
     return result_scene;
   }
 }

@@ -32,7 +32,7 @@ namespace gpu {
 
   template <typename... Bindings> 
   void write_set(VkDescriptorSet set, const Bindings&... bindings) {
-    internal::write_set(app_device(), set, bindings...);
+    internal::write_set(app_device().api_device(), set, bindings...);
   }
 
   void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);

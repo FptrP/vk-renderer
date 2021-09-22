@@ -11,6 +11,7 @@
 #include "backbuffer_subpass2.hpp"
 #include "gbuffer_subpass2.hpp"
 #include "util_passes.hpp"
+#include "scene_renderer.hpp"
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -82,12 +83,20 @@ int main() {
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/frag.spv", "main"}
   });
 
+  gpu::create_program("gbuf_opaque", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/opaque_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/opaque_frag.spv", "main"}
+  });
+
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   auto transfer_pool = gpu::app_device().new_transfer_pool();
 
-  auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/suzanne/Suzanne.gltf", "assets/gltf/suzanne/");
+  auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
 
-  GbufferData gbuffer {render_graph, WIDTH, HEIGHT};
+  Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
+  SceneRenderer scene_renderer {scene};
+  scene_renderer.init_pipeline(render_graph, gbuffer);
+
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
   auto noise_image = render_graph.create_image(
@@ -131,7 +140,7 @@ int main() {
 
 
     mvp = projection * camera.get_view_mat();
-    add_gbuffer_subpass(gbuffer, render_graph, scene, mvp, noise_image, sampler);
+    scene_renderer.draw(render_graph, gbuffer, mvp);
     add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
     render_graph.submit(); 
   }
