@@ -6,12 +6,12 @@
 
 #include "gpu/gpu.hpp"
 #include "scene/scene.hpp"
-
 #include "rendergraph/rendergraph.hpp"
+
 #include "backbuffer_subpass2.hpp"
-#include "gbuffer_subpass2.hpp"
 #include "util_passes.hpp"
 #include "scene_renderer.hpp"
+#include "gpu_transfer.hpp"
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -60,8 +60,8 @@ struct AppInit {
   SDL_Window *window;
 };
 
-const uint32_t WIDTH = 1280;
-const uint32_t HEIGHT = 720;
+const uint32_t WIDTH = 1920;
+const uint32_t HEIGHT = 1080;
 
 int main() {
   AppInit app_init {WIDTH, HEIGHT};
@@ -90,6 +90,7 @@ int main() {
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   auto transfer_pool = gpu::app_device().new_transfer_pool();
+  gpu_transfer::init(render_graph);
 
   auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
 
@@ -99,24 +100,8 @@ int main() {
 
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
-  auto noise_image = render_graph.create_image(
-    VK_IMAGE_TYPE_2D, {
-      VK_FORMAT_R8G8B8A8_SRGB,
-      VK_IMAGE_ASPECT_COLOR_BIT,
-      256,
-      256,
-      1,
-      8,
-      1
-    },
-    VK_IMAGE_TILING_OPTIMAL, 
-    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-
-  gen_perlin_noise2D(render_graph, noise_image, 0, 0);
-  gen_mipmaps(render_graph, noise_image);
-
   scene::Camera camera;
-  glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.01f, 10.f);
+  glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
   glm::mat4 mvp = projection * camera.get_view_mat();
   
   bool quit = false;
@@ -137,15 +122,17 @@ int main() {
     ticks = ticks_now;
 
     camera.move(dt);
-
-
     mvp = projection * camera.get_view_mat();
-    scene_renderer.draw(render_graph, gbuffer, mvp);
+    scene_renderer.update_scene(mvp);
+
+    
+    gpu_transfer::process_requests(render_graph);
+    scene_renderer.draw(render_graph, gbuffer);
     add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
     render_graph.submit(); 
   }
-
+  
   vkDeviceWaitIdle(gpu::app_device().api_device());
-
+  gpu_transfer::close();
   return 0;
 }

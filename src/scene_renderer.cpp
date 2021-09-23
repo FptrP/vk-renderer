@@ -1,5 +1,7 @@
 #include "scene_renderer.hpp"
+#include "gpu_transfer.hpp"
 
+#include <cstdlib>
 
 Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) : w {width}, h {height} {
   auto tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -34,31 +36,47 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
     VK_FORMAT_D16_UNORM
   }});
 
-  ubo.reset(new gpu::DynBuffer<glm::mat4> {gpu::create_dynbuffer<glm::mat4>(graph.get_frames_count())});
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+
+  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(glm::mat4), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 }
 
-static void node_process(const scene::Node &node, std::vector<SceneRenderer::DrawCall> &draw_calls, const glm::mat4 &acc) {
+static void node_process(const scene::Node &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
   auto transform = acc * node.transform;
+  uint32_t transform_id = transforms.size();
+  
+  if (node.meshes.size()) {
+    transforms.push_back(transform);
+  }
+
   for (auto mesh_index : node.meshes) {
-    draw_calls.push_back(SceneRenderer::DrawCall {transform, mesh_index});
+    draw_calls.push_back(SceneRenderer::DrawCall {transform_id, mesh_index});
   }
 
   for (auto &child : node.children) {
-    node_process(*child, draw_calls, transform);
+    node_process(*child, draw_calls, transforms, transform);
   }
 }
 
 void SceneRenderer::build_scene() {
-  draw_calls.clear();
-  auto transform = glm::identity<glm::mat4>();
-  node_process(*target.root, draw_calls, transform);
+  
 }
 
-void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer,  const glm::mat4 &mvp) {
-  
-  build_scene();
+void SceneRenderer::update_scene(const glm::mat4 &mvp) {
+  auto identity = glm::identity<glm::mat4>();
+  std::vector<glm::mat4> transforms;
 
+  draw_calls.clear();
+  
+  node_process(*target.root, draw_calls, transforms, identity);
+
+  gpu_transfer::write_buffer(view_proj_buffer, 0, sizeof(mvp), &mvp);
+  gpu_transfer::write_buffer(transform_buffer, 0, sizeof(glm::mat4) * transforms.size(), transforms.data());
+}
+
+void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer) {
+  
   struct Data {
     rendergraph::ImageViewId albedo;
     rendergraph::ImageViewId normal;
@@ -72,12 +90,11 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
       input.normal = builder.use_color_attachment(gbuffer.normal, 0, 0);
       input.material = builder.use_color_attachment(gbuffer.material, 0, 0);
       input.depth = builder.use_depth_attachment(gbuffer.depth, 0, 0);
+
+      builder.use_uniform_buffer(view_proj_buffer, VK_SHADER_STAGE_VERTEX_BIT);
+      builder.use_storage_buffer(transform_buffer, VK_SHADER_STAGE_VERTEX_BIT);
     },
     [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      *ubo->get_mapped_ptr(resources.get_frame_index()) = mvp;
-
-      uint32_t ubo_offset = ubo->get_offset(resources.get_frame_index());
-
       cmd.set_framebuffer(gbuffer.w, gbuffer.h, {
         resources.get_view(input.albedo),
         resources.get_view(input.normal),
@@ -107,11 +124,12 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
         auto set = resources.allocate_set(opaque_pipeline.get_layout(0));
         
         gpu::write_set(set, 
-          gpu::DynBufBinding {0, *ubo},
-          gpu::TextureBinding {1, target.images[material.albedo_tex_index], sampler});
+          gpu::UBOBinding {0, resources.get_buffer(view_proj_buffer)},
+          gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
+          gpu::TextureBinding {2, target.images[material.albedo_tex_index], sampler});
 
-        cmd.bind_descriptors_graphics(0, {set}, {ubo_offset});
-        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &draw_call.transform);
+        cmd.bind_descriptors_graphics(0, {set}, {0});
+        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &draw_call.transform);
         cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       }
 

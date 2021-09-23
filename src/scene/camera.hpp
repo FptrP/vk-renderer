@@ -10,14 +10,14 @@
 
 namespace scene {
 
-  const float YAW        = -90.0f;
+  const float YAW        =  90.0f;
   const float PITCH      =  0.0f;
   const float SPEED      =  15.0f;
   const float SENSITIVTY =  0.25f;
   const float ZOOM       =  45.0f;
 
   struct Camera {
-	  Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up_ = glm::vec3(0.0f, 1.0f, 0.0f), float yaw_ = YAW, float pitch_ = PITCH) 
+	  Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up_ = glm::vec3(0.0f, -1.0f, 0.0f), float yaw_ = YAW, float pitch_ = PITCH) 
 	    : pos {position}, world_up {up_}, yaw {yaw_}, pitch {pitch_}
 	  {
 	    update_camera_vectors();
@@ -66,7 +66,7 @@ namespace scene {
 	    }
 
 	    if (e.type == SDL_MOUSEMOTION && mouse_capture) {
-		    float xm = e.motion.xrel * mouse_sensitivity, ym = e.motion.yrel * mouse_sensitivity;
+		    float xm = -e.motion.xrel * mouse_sensitivity, ym = -e.motion.yrel * mouse_sensitivity;
 		    yaw += xm;
 		    pitch += ym;
 		    pitch = (pitch > 89.f)? 89.f : (pitch < -89.f)? -89.f : pitch;

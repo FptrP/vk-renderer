@@ -25,9 +25,13 @@ namespace rendergraph {
     ImageViewId use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages);
+    
+    void use_uniform_buffer(BufferResourceId id, VkShaderStageFlags stages);
+    void use_storage_buffer(BufferResourceId id, VkShaderStageFlags stages, bool readonly = true);
 
     void transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     void transfer_write(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
+    void transfer_write(BufferResourceId id);
 
     const gpu::ImageInfo &get_image_info(ImageResourceId id);
 
@@ -117,6 +121,7 @@ namespace rendergraph {
 
     ImageResourceId create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
     ImageResourceId create_image(const ImageDescriptor &desc);
+    BufferResourceId create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage);
 
     const gpu::ImageInfo get_descriptor(ImageResourceId id) const;
 

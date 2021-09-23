@@ -40,6 +40,7 @@ add_executable(main
   src/gbuffer_subpass2.cpp
   src/util_passes.cpp
   src/scene_renderer.cpp
+  src/gpu_transfer.cpp
 
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp

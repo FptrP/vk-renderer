@@ -101,6 +101,28 @@ namespace rendergraph {
     }
   }
 
+  void RenderGraphBuilder::transfer_write(BufferResourceId id) {
+    BufferState state {
+      VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_ACCESS_TRANSFER_WRITE_BIT
+    };
+    tracking_state.add_input(resources, id, state);
+  }
+
+  void RenderGraphBuilder::use_uniform_buffer(BufferResourceId id, VkShaderStageFlags stages) {
+    auto pipeline_stages = get_pipeline_flags(stages);
+    tracking_state.add_input(resources, id, {pipeline_stages, VK_ACCESS_UNIFORM_READ_BIT});
+  }
+
+  void RenderGraphBuilder::use_storage_buffer(BufferResourceId id, VkShaderStageFlags stages, bool readonly) {
+    auto pipeline_stages = get_pipeline_flags(stages);
+    VkAccessFlags access = VK_ACCESS_SHADER_READ_BIT;
+    if (!readonly) {
+      access |= VK_ACCESS_SHADER_WRITE_BIT;
+    }
+    tracking_state.add_input(resources, id, {pipeline_stages, access});
+  }
+
   void RenderGraphBuilder::prepare_backbuffer() {
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -235,6 +257,10 @@ namespace rendergraph {
 
   ImageResourceId RenderGraph::create_image(const ImageDescriptor &desc) {
     return resources.create_global_image(desc);
+  }
+
+  BufferResourceId RenderGraph::create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage) {
+    return resources.create_global_buffer(BufferDescriptor {size, usage, mem});
   }
 
   ImageResourceId RenderGraph::get_backbuffer() const {
