@@ -117,9 +117,11 @@ namespace rendergraph {
   void RenderGraphBuilder::use_storage_buffer(BufferResourceId id, VkShaderStageFlags stages, bool readonly) {
     auto pipeline_stages = get_pipeline_flags(stages);
     VkAccessFlags access = VK_ACCESS_SHADER_READ_BIT;
+    
     if (!readonly) {
       access |= VK_ACCESS_SHADER_WRITE_BIT;
     }
+
     tracking_state.add_input(resources, id, {pipeline_stages, access});
   }
 

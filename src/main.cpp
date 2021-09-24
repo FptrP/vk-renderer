@@ -89,9 +89,9 @@ int main() {
   });
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
-  auto transfer_pool = gpu::app_device().new_transfer_pool();
   gpu_transfer::init(render_graph);
 
+  auto transfer_pool = gpu::app_device().new_transfer_pool();
   auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
 
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
@@ -102,7 +102,6 @@ int main() {
 
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
-  glm::mat4 mvp = projection * camera.get_view_mat();
   
   bool quit = false;
   auto ticks = SDL_GetTicks();
@@ -122,13 +121,12 @@ int main() {
     ticks = ticks_now;
 
     camera.move(dt);
-    mvp = projection * camera.get_view_mat();
-    scene_renderer.update_scene(mvp);
+    scene_renderer.update_scene(camera.get_view_mat(), projection);
 
     
     gpu_transfer::process_requests(render_graph);
     scene_renderer.draw(render_graph, gbuffer);
-    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
+    add_backbuffer_subpass(render_graph, gbuffer.normal, sampler);
     render_graph.submit(); 
   }
   

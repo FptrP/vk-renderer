@@ -130,11 +130,19 @@ namespace gpu {
       auto set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
       auto binding = comp.get_decoration(resource.id, spv::DecorationBinding);  
 
+      const auto &type = comp.get_type(resource.type_id);
+      uint32_t desc_count = 1;
+      if (type.array.size()) {
+        for (auto elem : type.array) {
+          desc_count *= elem;
+        }
+      }
+
       if (!builder[set].count(binding)) { //first creation
         VkDescriptorSetLayoutBinding api_binding {
           .binding = binding,
           .descriptorType = desc_type,
-          .descriptorCount = 1,
+          .descriptorCount = desc_count,
           .stageFlags = stage,
           .pImmutableSamplers = nullptr
         };
@@ -145,6 +153,11 @@ namespace gpu {
       if (desc.descriptorType != desc_type) {
         throw std::runtime_error {"Incompatible type for descriptors"};
       }
+
+      if (desc.descriptorCount != desc_count) {
+        throw std::runtime_error {"Incompatible array declaration"};
+      }
+
       desc.stageFlags |= stage;
     }
   }
@@ -165,6 +178,8 @@ namespace gpu {
       add_resources(layouts, compiler, shader.stage, resources.storage_buffers.data(), resources.storage_buffers.size(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
       add_resources(layouts, compiler, shader.stage, resources.uniform_buffers.data(), resources.uniform_buffers.size(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
       add_resources(layouts, compiler, shader.stage, resources.sampled_images.data(), resources.sampled_images.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+      add_resources(layouts, compiler, shader.stage, resources.separate_images.data(), resources.separate_images.size(), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+      add_resources(layouts, compiler, shader.stage, resources.separate_samplers.data(), resources.separate_samplers.size(), VK_DESCRIPTOR_TYPE_SAMPLER);
     }
     catch(...) {
       vkDestroyShaderModule(api_device, mod, nullptr);

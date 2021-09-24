@@ -94,6 +94,39 @@ namespace gpu {
     VkDescriptorImageInfo info {};
   };
 
+  struct ArrayOfImagesBinding : BaseBinding {
+    ArrayOfImagesBinding(uint32_t binding, const std::vector<VkImageView> &src)
+      : BaseBinding {binding, 0, (uint32_t)src.size(), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE}
+    {
+      view_info.reserve(src.size());
+      for (auto elem : src) {
+        VkDescriptorImageInfo info {
+          .sampler = nullptr,
+          .imageView = elem,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+        view_info.push_back(info);
+      }
+
+      desc_write.pImageInfo = view_info.data();
+    }
+
+  private:
+    std::vector<VkDescriptorImageInfo> view_info;
+  };
+
+  struct SamplerBinding : BaseBinding {
+    SamplerBinding(uint32_t binding, VkSampler sampler)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_SAMPLER}
+    {
+      info.sampler = sampler;
+      desc_write.pImageInfo = &info;
+    }
+
+  private:
+    VkDescriptorImageInfo info {};
+  };
+
   namespace internal {
     inline void write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0) {
       *ptr = b0.desc_write;

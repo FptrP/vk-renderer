@@ -2,6 +2,7 @@
 #include "gpu_transfer.hpp"
 
 #include <cstdlib>
+#include <iostream>
 
 Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) : w {width}, h {height} {
   auto tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -9,7 +10,7 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
   auto depth_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
   gpu::ImageInfo albedo_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
-  gpu::ImageInfo normal_info {VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+  gpu::ImageInfo normal_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo mat_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo depth_info {VK_FORMAT_D16_UNORM, VK_IMAGE_ASPECT_DEPTH_BIT, width, height};
 
@@ -31,23 +32,37 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   
   opaque_pipeline.set_rendersubpass({true, {
     VK_FORMAT_R8G8B8A8_SRGB, 
-    VK_FORMAT_R16G16B16A16_SFLOAT,
+    VK_FORMAT_R16G16_SFLOAT,
     VK_FORMAT_R8G8B8A8_SRGB,
     VK_FORMAT_D16_UNORM
   }});
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
-  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(glm::mat4), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, 2*sizeof(glm::mat4), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+  scene_image_views.reserve(target.images.size());
+
+  for (auto &elem : target.images) {
+    gpu::ImageViewRange range {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
+    range.mips_count = elem.get_mip_levels();
+    auto view = elem.get_view(range);
+    scene_image_views.push_back(view);
+  }
+
+  while (scene_image_views.size() != 64) {
+    scene_image_views.push_back(scene_image_views.front());
+  }
 }
 
 static void node_process(const scene::Node &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
   auto transform = acc * node.transform;
-  uint32_t transform_id = transforms.size();
+  uint32_t transform_id = transforms.size()/2;
   
   if (node.meshes.size()) {
     transforms.push_back(transform);
+    transforms.push_back(glm::transpose(glm::inverse(transform)));
   }
 
   for (auto mesh_index : node.meshes) {
@@ -59,11 +74,7 @@ static void node_process(const scene::Node &node, std::vector<SceneRenderer::Dra
   }
 }
 
-void SceneRenderer::build_scene() {
-  
-}
-
-void SceneRenderer::update_scene(const glm::mat4 &mvp) {
+void SceneRenderer::update_scene(const glm::mat4 &camera, const glm::mat4 &projection) {
   auto identity = glm::identity<glm::mat4>();
   std::vector<glm::mat4> transforms;
 
@@ -71,9 +82,19 @@ void SceneRenderer::update_scene(const glm::mat4 &mvp) {
   
   node_process(*target.root, draw_calls, transforms, identity);
 
+  auto mvp = projection * camera;
+  auto camera_norm = glm::transpose(glm::inverse(camera));
+
   gpu_transfer::write_buffer(view_proj_buffer, 0, sizeof(mvp), &mvp);
+  gpu_transfer::write_buffer(view_proj_buffer, sizeof(mvp), sizeof(camera_norm), &camera_norm);
   gpu_transfer::write_buffer(transform_buffer, 0, sizeof(glm::mat4) * transforms.size(), transforms.data());
 }
+
+struct PushData {
+  uint32_t transform_index;
+  uint32_t albedo_index;
+  uint32_t mr_index;
+};
 
 void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer) {
   
@@ -113,6 +134,16 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
       cmd.bind_vertex_buffers(0, {vbuf}, {0ul});
       cmd.bind_index_buffer(ibuf, 0, VK_INDEX_TYPE_UINT32);
       
+      auto set = resources.allocate_set(opaque_pipeline.get_layout(0));
+        
+      gpu::write_set(set, 
+        gpu::UBOBinding {0, resources.get_buffer(view_proj_buffer)},
+        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
+        gpu::ArrayOfImagesBinding {2, scene_image_views},
+        gpu::SamplerBinding {3, sampler});
+
+      cmd.bind_descriptors_graphics(0, {set}, {0});
+
       for (const auto &draw_call : draw_calls) {
         const auto &mesh = target.meshes[draw_call.mesh];
         const auto &material = target.materials[mesh.material_index];
@@ -121,15 +152,12 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
           continue;
         }
 
-        auto set = resources.allocate_set(opaque_pipeline.get_layout(0));
-        
-        gpu::write_set(set, 
-          gpu::UBOBinding {0, resources.get_buffer(view_proj_buffer)},
-          gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
-          gpu::TextureBinding {2, target.images[material.albedo_tex_index], sampler});
+        PushData pc {};
+        pc.transform_index = draw_call.transform;
+        pc.albedo_index = material.albedo_tex_index;
+        pc.mr_index = material.metalic_roughness_index;
 
-        cmd.bind_descriptors_graphics(0, {set}, {0});
-        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &draw_call.transform);
+        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
         cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       }
 

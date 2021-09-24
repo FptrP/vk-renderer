@@ -23,7 +23,7 @@ struct SceneRenderer {
   SceneRenderer(scene::CompiledScene &s) : target {s} {}
 
   void init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer &buffer);
-  void update_scene(const glm::mat4 &mvp);
+  void update_scene(const glm::mat4 &camera, const glm::mat4 &projection);
   void draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer);
 
   struct DrawCall {
@@ -34,13 +34,12 @@ struct SceneRenderer {
 private:
   scene::CompiledScene &target;
   gpu::GraphicsPipeline opaque_pipeline;
+  std::vector<VkImageView> scene_image_views;
   std::vector<DrawCall> draw_calls;
   VkSampler sampler;
   
   rendergraph::BufferResourceId transform_buffer;
   rendergraph::BufferResourceId view_proj_buffer;
-  void build_scene();
-
 };
 
 

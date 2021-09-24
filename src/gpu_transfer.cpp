@@ -104,6 +104,7 @@ namespace gpu_transfer {
     
     g_transfer_state->dirty_buffers.clear();
     g_transfer_state->buffer_id = (g_transfer_state->buffer_id + 1) % g_transfer_state->transfer_buffers.size();
+    g_transfer_state->write_offset = 0;
   }
   
   void write_buffer(rendergraph::BufferResourceId id, uint64_t offset, uint64_t size, const void *data) {
