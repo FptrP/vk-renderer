@@ -67,20 +67,20 @@ int main() {
   AppInit app_init {WIDTH, HEIGHT};
 
   gpu::create_program("triangle", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/triangle/frag.spv", "main"}});
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/shader_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/triangle/shader_frag.spv", "main"}});
   
   gpu::create_program("texdraw", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/frag.spv", "main"}});
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/shader_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/shader_frag.spv", "main"}});
   
   gpu::create_program("gbuf", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/default_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/default_frag.spv", "main"}});
 
   gpu::create_program("perlin", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/frag.spv", "main"}
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/shader_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/shader_frag.spv", "main"}
   });
 
   gpu::create_program("gbuf_opaque", {

@@ -5,3 +5,6 @@ cmake_install.cmake
 CMakeFiles
 captures
 assets/*
+*.spv
+
+!src/shaders/Makefile
