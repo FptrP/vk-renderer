@@ -11,6 +11,7 @@
 #include "backbuffer_subpass2.hpp"
 #include "util_passes.hpp"
 #include "scene_renderer.hpp"
+#include "defered_shading.hpp"
 #include "gpu_transfer.hpp"
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
@@ -74,10 +75,6 @@ int main() {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/shader_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/shader_frag.spv", "main"}});
   
-  gpu::create_program("gbuf", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/default_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/default_frag.spv", "main"}});
-
   gpu::create_program("perlin", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/shader_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/shader_frag.spv", "main"}
@@ -88,7 +85,16 @@ int main() {
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/opaque_frag.spv", "main"}
   });
 
+  gpu::create_program("defered_shading", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/defered_shading/shader_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/defered_shading/shader_frag.spv", "main"}
+  });
 
+  gpu::create_program("default_shadow", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/shadows/default_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/shadows/default_frag.spv", "main"}
+  });
+  
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
@@ -99,12 +105,22 @@ int main() {
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
+  DeferedShadingPass shading_pass {render_graph};
 
-  auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+  auto shadows_tex = render_graph.create_image(
+    VK_IMAGE_TYPE_2D, 
+    gpu::ImageInfo{
+      VK_FORMAT_D24_UNORM_S8_UINT, 
+      VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT, 
+      1024, 1024, 1, 1, 4
+    }, 
+    VK_IMAGE_TILING_OPTIMAL, 
+    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 
   scene::Camera camera;
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
-  
+  glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{0, 2, -1}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
+
   bool quit = false;
   auto ticks = SDL_GetTicks();
 
@@ -124,11 +140,13 @@ int main() {
 
     camera.move(dt);
     scene_renderer.update_scene(camera.get_view_mat(), projection);
-
+    shading_pass.update_params(camera.get_view_mat(), shadow_mvp, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
     
     gpu_transfer::process_requests(render_graph);
+    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     scene_renderer.draw(render_graph, gbuffer);
-    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, render_graph.get_backbuffer());
+    add_present_subpass(render_graph);
     render_graph.submit(); 
   }
   

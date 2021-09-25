@@ -15,7 +15,7 @@ namespace rendergraph {
         frames_count {backbuffers_count},
         cmdbuffer_pool {device.new_command_pool()},
         desc_pool {device.new_descriptor_pool(frames_count)},
-        cmd_buffers {cmdbuffer_pool.allocate_contexts(frames_count)}
+        cmd_buffers {device.allocate_cmd_contexts(cmdbuffer_pool, frames_count)}
     {
       submit_fences.reserve(frames_count);
       image_acquire_semaphores.reserve(frames_count);

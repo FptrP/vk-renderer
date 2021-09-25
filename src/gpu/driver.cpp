@@ -272,6 +272,17 @@ namespace gpu {
     return images;
   }
 
+  std::vector<CmdContext> Device::allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count) {
+    auto api_buffers = pool.allocate(count);
+    std::vector<CmdContext> cmd;
+    cmd.reserve(count);
+    for (auto elem : api_buffers) {
+      cmd.emplace_back(logical_device, elem, allocator, properties.limits.minUniformBufferOffsetAlignment);
+    }
+    
+    return cmd;
+  }
+
   struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
     std::vector<VkSurfaceFormatKHR> formats;

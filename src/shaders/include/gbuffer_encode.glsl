@@ -37,6 +37,13 @@ vec3 decode_normal(in vec2 uv)
   return normalize(v);
 }
 
+vec3 sample_gbuffer_normal(in sampler2D normal_tex, in vec2 uv)
+{
+  vec2 t = texture(normal_tex, uv).xy;
+  return decode_normal(t); 
+}
+
+
 float linearize_depth(float d, float zNear,float zFar)
 {
   return zNear * zFar / (zFar + d * (zNear - zFar));

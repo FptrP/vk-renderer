@@ -21,7 +21,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
   graph.add_task<SubpassData>("BackbufSubpass",
     [&](SubpassData &data, rendergraph::RenderGraphBuilder &builder){
       data.backbuff_view = builder.use_backbuffer_attachment();
-      data.texture_view = builder.sample_image(draw_img, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 1, 0, 1);
+      data.texture_view = builder.sample_image(draw_img, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 0, 1, 0, 1);
 
       auto &desc = builder.get_image_info(data.backbuff_view);
       pipeline.set_rendersubpass({false, {desc.format}});
@@ -93,6 +93,17 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
       cmd.end_renderpass();
     });
 
+  graph.add_task<Nil>("presentPrepare",
+  [&](Nil &, rendergraph::RenderGraphBuilder &builder){
+    builder.prepare_backbuffer();
+  },
+  [=](Nil &, rendergraph::RenderResources&, gpu::CmdContext &){
+
+  });
+}
+
+void add_present_subpass(rendergraph::RenderGraph &graph) {
+  struct Nil {};
   graph.add_task<Nil>("presentPrepare",
   [&](Nil &, rendergraph::RenderGraphBuilder &builder){
     builder.prepare_backbuffer();

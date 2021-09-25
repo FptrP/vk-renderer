@@ -1,4 +1,5 @@
 #include "resources.hpp"
+#include <stdexcept>
 
 namespace gpu {
 
@@ -97,7 +98,14 @@ namespace gpu {
     }
   }
   
-  VkImageView Image::get_view(const ImageViewRange &range) {
+
+
+  VkImageView Image::get_view(ImageViewRange range) {
+    range.aspect &= descriptor.aspect;
+    if (!range.aspect) {
+      range.aspect = descriptor.aspect;
+    }
+
     auto iter = views.find(range);
     if (iter != views.end()) {
       return iter->second;
@@ -111,7 +119,7 @@ namespace gpu {
       .viewType = range.type,
       .format = descriptor.format,
       .components = {},
-      .subresourceRange = {descriptor.aspect, range.base_mip, range.mips_count, range.base_layer, range.layers_count}
+      .subresourceRange = {range.aspect, range.base_mip, range.mips_count, range.base_layer, range.layers_count}
     };
 
     VkImageView view {nullptr};

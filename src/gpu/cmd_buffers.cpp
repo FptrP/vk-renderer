@@ -4,17 +4,6 @@
 
 namespace gpu {
 
-  std::vector<CmdContext> CmdBufferPool::allocate_contexts(uint32_t frames_count) {
-    auto buffers = allocate(frames_count);
-
-    std::vector<CmdContext> res;
-    res.reserve(frames_count);
-    for (uint32_t i = 0; i < frames_count; i++) {
-      res.emplace_back(device, buffers[i]);
-    }
-    return res;
-  }
-
   struct FramebufferResource : CtxResource {
     FramebufferResource(VkFramebuffer framebuff) : CtxResource{},  fb {framebuff} {}
 
@@ -40,6 +29,7 @@ namespace gpu {
   };
 
   void CmdContext::begin() {
+    ubo_pool.reset();
     VkCommandBufferBeginInfo info {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &info);
@@ -268,6 +258,13 @@ namespace gpu {
   }
 
   void CmdContext::clear_resources() {
+    if (!api_device) { return; }
+
+    if (state.framebuffer) {
+      delayed_free.push_back(new FramebufferResource{state.framebuffer});
+      state.framebuffer = nullptr;
+    }
+
     for (auto res : delayed_free) {
       res->destroy(api_device);
       delete res;
@@ -429,6 +426,32 @@ namespace gpu {
     std::swap(cmd, tpool.cmd);
     std::swap(fence, tpool.fence);
     std::swap(buffer_acquired, tpool.buffer_acquired);
+    return *this;
+  }
+
+  CmdContext::CmdContext(CmdContext &&o) : 
+    api_device {o.api_device},
+    cmd {o.cmd},
+    gfx_pipeline {o.gfx_pipeline},
+    cmp_pipeline {o.cmp_pipeline},
+    state {o.state},
+    fb_state {std::move(o.fb_state)},
+    ubo_pool {std::move(o.ubo_pool)},
+    delayed_free {std::move(o.delayed_free)}
+  {
+    o.state.framebuffer = nullptr;
+    o.api_device = nullptr;
+    o.cmd = nullptr;
+  }
+
+  CmdContext &CmdContext::operator=(CmdContext &&o) {
+    std::swap(api_device, o.api_device);
+    std::swap(cmd, o.cmd);
+    std::swap(gfx_pipeline, o.gfx_pipeline);
+    std::swap(cmp_pipeline, o.cmp_pipeline);
+    std::swap(state, o.state);
+    std::swap(fb_state, o.fb_state);
+    ubo_pool = std::move(o.ubo_pool);
     return *this;
   }
 

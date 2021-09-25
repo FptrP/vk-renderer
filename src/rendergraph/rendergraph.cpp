@@ -22,7 +22,6 @@ namespace rendergraph {
     return pipeline_stages;
   }
 
-
   ImageViewId RenderGraphBuilder::use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer) {
     ImageSubresourceId subres {id, mip, layer};
     ImageSubresourceState state {
@@ -43,15 +42,15 @@ namespace rendergraph {
     };
     
     tracking_state.add_input(resources, subres, state);
-    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT, mip, 1, layer, 1}};
   }
   
-  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages) {
+  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect) {
     const auto &desc = resources.get_info(id);
-    return sample_image(id, stages, 0, desc.mip_levels, 0, desc.array_layers);
+    return sample_image(id, stages, aspect, 0, desc.mip_levels, 0, desc.array_layers);
   }
 
-  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
+  ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
     auto pipeline_stages = get_pipeline_flags(stages);
 
     ImageSubresourceState state {
@@ -66,8 +65,8 @@ namespace rendergraph {
         tracking_state.add_input(resources, subres, state);
       }
     }
-
-    return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_2D, base_mip, mip_count, base_layer, layer_count}};
+    auto type = (layer_count > 1)? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D; 
+    return ImageViewId {id, {type, aspect, base_mip, mip_count, base_layer, layer_count}};
   }
 
   void RenderGraphBuilder::transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
@@ -269,7 +268,7 @@ namespace rendergraph {
     return backbuffers[0];
   }
 
-  const gpu::ImageInfo RenderGraph::get_descriptor(ImageResourceId id) const {
+  const gpu::ImageInfo &RenderGraph::get_descriptor(ImageResourceId id) const {
     return resources.get_info(id);
   }
 

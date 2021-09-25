@@ -12,7 +12,7 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
   gpu::ImageInfo albedo_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo normal_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo mat_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
-  gpu::ImageInfo depth_info {VK_FORMAT_D16_UNORM, VK_IMAGE_ASPECT_DEPTH_BIT, width, height};
+  gpu::ImageInfo depth_info {VK_FORMAT_D24_UNORM_S8_UINT, VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT, width, height};
 
   albedo = graph.create_image(VK_IMAGE_TYPE_2D, albedo_info, tiling, color_usage);
   normal = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
@@ -43,8 +43,13 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
     VK_FORMAT_R8G8B8A8_SRGB, 
     VK_FORMAT_R16G16_SFLOAT,
     VK_FORMAT_R8G8B8A8_SRGB,
-    VK_FORMAT_D16_UNORM
+    VK_FORMAT_D24_UNORM_S8_UINT
   }});
+
+  shadow_pipeline = gpu::create_graphics_pipeline();
+  shadow_pipeline.set_program("default_shadow");
+  shadow_pipeline.set_registers(regs);
+  shadow_pipeline.set_vertex_input(scene::get_vertex_input_shadow());
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
@@ -172,6 +177,64 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
         pc.mr_index = material.metalic_roughness_index;
 
         cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
+        cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
+      }
+
+
+      cmd.end_renderpass();
+      
+    });
+}
+
+void SceneRenderer::render_shadow(rendergraph::RenderGraph &graph, const glm::mat4 &shadow_mvp, rendergraph::ImageResourceId out_tex, uint32_t layer) {
+  struct Data {
+    rendergraph::ImageViewId depth;
+  };
+  
+  graph.add_task<Data>("ShadowPass",
+    [&](Data &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.use_depth_attachment(out_tex, 0, layer);
+      builder.use_storage_buffer(transform_buffer, VK_SHADER_STAGE_VERTEX_BIT);
+    },
+    [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      auto &depth_rt = resources.get_image(input.depth);
+      auto w = depth_rt.get_info().width;
+      auto h = depth_rt.get_info().width;
+
+      shadow_pipeline.set_rendersubpass({true, {depth_rt.get_fmt()}});
+
+      cmd.set_framebuffer(w, h, {resources.get_view(input.depth)});
+
+      auto vbuf = target.vertex_buffer.get_api_buffer();
+      auto ibuf = target.index_buffer.get_api_buffer();
+      
+      cmd.bind_pipeline(shadow_pipeline);
+      cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
+      cmd.clear_depth_attachment(1.f);
+      cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);
+      cmd.bind_scissors(0, 0, w, h);
+      cmd.bind_vertex_buffers(0, {vbuf}, {0ul});
+      cmd.bind_index_buffer(ibuf, 0, VK_INDEX_TYPE_UINT32);
+      
+      auto set = resources.allocate_set(shadow_pipeline.get_layout(0));
+      auto block = cmd.allocate_ubo<glm::mat4>();
+      *block.ptr = shadow_mvp;
+
+      gpu::write_set(set, 
+        gpu::UBOBinding {0, cmd.get_ubo_pool(), block},
+        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)});
+
+      cmd.bind_descriptors_graphics(0, {set}, {block.offset});
+
+      for (const auto &draw_call : draw_calls) {
+        const auto &mesh = target.meshes[draw_call.mesh];
+        const auto &material = target.materials[mesh.material_index];
+
+        if (material.albedo_tex_index == scene::INVALID_TEXTURE) {
+          continue;
+        }
+
+        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &draw_call.transform);
         cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       }
 

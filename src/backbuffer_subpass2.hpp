@@ -7,4 +7,5 @@
 
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler);
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler);
+void add_present_subpass(rendergraph::RenderGraph &graph);
 #endif

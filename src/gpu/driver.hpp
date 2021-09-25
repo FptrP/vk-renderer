@@ -107,6 +107,9 @@ namespace gpu {
 
     Sampler create_sampler(VkSamplerCreateInfo info) const { return Sampler {logical_device, info}; }
     VmaAllocator get_allocator() const { return allocator; }
+
+    std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
+
   private:
     VkPhysicalDevice physical_device {nullptr};
     VkPhysicalDeviceProperties properties;

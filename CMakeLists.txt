@@ -40,6 +40,7 @@ add_executable(main
   src/util_passes.cpp
   src/scene_renderer.cpp
   src/gpu_transfer.cpp
+  src/defered_shading.cpp
 
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp

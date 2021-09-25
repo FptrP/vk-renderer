@@ -52,6 +52,25 @@ namespace gpu {
       desc_write.pBufferInfo = &info;
     }
 
+    template<typename T>
+    UBOBinding(uint32_t binding, const UniformBufferPool &pool, const UboBlock<T> &)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
+    {
+      info.buffer = pool.api_buffer();
+      info.offset = 0;
+      info.range = sizeof(T);
+      desc_write.pBufferInfo = &info;
+    }
+
+    UBOBinding(uint32_t binding, const UniformBufferPool &pool, uint64_t size)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
+    {
+      info.buffer = pool.api_buffer();
+      info.offset = 0;
+      info.range = size;
+      desc_write.pBufferInfo = &info;
+    }
+
   private:
     VkDescriptorBufferInfo info {};
   };
@@ -72,6 +91,15 @@ namespace gpu {
   };
 
   struct TextureBinding : BaseBinding {
+    TextureBinding(uint32_t binding, VkImageView view, VkSampler sampler)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER}
+    {
+      info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      info.sampler = sampler;
+      info.imageView = view;
+      desc_write.pImageInfo = &info;
+    }
+
     TextureBinding(uint32_t binding, Image &image, VkSampler sampler, uint32_t base_mip, uint32_t mips_count)
       : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER}
     {

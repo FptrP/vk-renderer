@@ -34,6 +34,22 @@ namespace scene {
     return vinput;
   }
 
+  gpu::VertexInput get_vertex_input_shadow() {
+    gpu::VertexInput vinput;
+
+    vinput.bindings = {{0, sizeof(scene::Vertex), VK_VERTEX_INPUT_RATE_VERTEX}};
+    vinput.attributes = {
+      {
+        .location = 0,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(scene::Vertex, pos)
+      }
+    };
+    
+    return vinput;
+  }
+
   static void load_verts_memory(const aiScene *scene, std::vector<Mesh> &meshes, std::vector<Vertex> &verts, std::vector<uint32_t> &indexes) {
     const uint32_t meshes_count = scene->mNumMeshes;
     uint32_t verts_count = 0, index_count = 0;

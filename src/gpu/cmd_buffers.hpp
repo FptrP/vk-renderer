@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "gpu/pipelines.hpp"
+#include "gpu/dynbuffer.hpp"
 
 namespace gpu {
 
@@ -58,8 +59,6 @@ namespace gpu {
       return result;
     }
 
-    std::vector<CmdContext> allocate_contexts(uint32_t frames_count);
-
     VkCommandBuffer allocate() {
       VkCommandBufferAllocateInfo info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -89,8 +88,11 @@ namespace gpu {
     virtual ~CtxResource() {} 
   };
 
+  constexpr uint64_t UBO_POOL_SIZE = 4 * (1 << 10); //4Kb
+
   struct CmdContext {
-    CmdContext(VkDevice device, VkCommandBuffer cmd_buf) : api_device {device}, cmd {cmd_buf} {}
+    CmdContext(VkDevice device, VkCommandBuffer cmd_buf, VmaAllocator alloc, uint64_t alignment)
+      : api_device {device}, cmd {cmd_buf}, ubo_pool {alloc, alignment, UBO_POOL_SIZE} {}
     ~CmdContext() { clear_resources(); }
     
     void begin();
@@ -128,6 +130,14 @@ namespace gpu {
 
     VkCommandBuffer get_command_buffer() const { return cmd; }
     void clear_resources();
+
+    UniformBufferPool &get_ubo_pool() { return ubo_pool; }
+
+    template<typename T>
+    UboBlock<T> allocate_ubo() { return ubo_pool.allocate_ubo<T>(); }
+
+    CmdContext(CmdContext &&) /*= default*/;
+    CmdContext &operator=(CmdContext &&) /*= default*/;
     //void draw_indexed
   private:
     VkDevice api_device = nullptr;
@@ -151,6 +161,8 @@ namespace gpu {
       uint32_t height;
       std::vector<VkImageView> attachments;
     } fb_state {};
+
+    UniformBufferPool ubo_pool;
 
     std::vector<CtxResource*> delayed_free {};
 

@@ -23,8 +23,8 @@ namespace rendergraph {
     
     ImageViewId use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
-    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
-    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages);
+    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
+    ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect = 0);
     
     void use_uniform_buffer(BufferResourceId id, VkShaderStageFlags stages);
     void use_storage_buffer(BufferResourceId id, VkShaderStageFlags stages, bool readonly = true);
@@ -58,7 +58,7 @@ namespace rendergraph {
     VkImageView get_view(const ImageViewId &ref);
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
-    VkDescriptorSet allocate_set(const gpu::Pipeline &pipeline, uint32_t index) { return gpu.allocate_set(pipeline.get_descriptor_set_layout(index)); }
+    VkDescriptorSet allocate_set(const gpu::GraphicsPipeline &p, uint32_t index) { return gpu.allocate_set(p.get_layout(index)); }
     gpu::Device &get_gpu() const { return gpu.get_device(); }
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
@@ -123,8 +123,8 @@ namespace rendergraph {
     ImageResourceId create_image(const ImageDescriptor &desc);
     BufferResourceId create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage);
 
-    const gpu::ImageInfo get_descriptor(ImageResourceId id) const;
-
+    const gpu::ImageInfo &get_descriptor(ImageResourceId id) const;
+    ImageResourceId get_backbuffer() const;
   private:
     GpuState gpu;
     GraphResources resources;
@@ -137,7 +137,7 @@ namespace rendergraph {
     void write_barrier(const Barrier &barrier, VkCommandBuffer cmd);
     void write_wait_events(const std::vector<Barrier> &barriers, const Barrier &barrier, VkCommandBuffer cmd);
 
-    ImageResourceId get_backbuffer() const;
+    //ImageResourceId get_backbuffer() const;
     friend struct RenderGraphBuilder;
   };
 
