@@ -20,6 +20,15 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
   depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage);
 }
 
+struct GbufConst {
+  glm::mat4 camera;
+  glm::mat4 projection;
+  float fovy;
+  float aspect;
+  float z_near;
+  float z_far; 
+};
+
 void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer) {
   gpu::Registers regs {};
   regs.depth_stencil.depthTestEnable = VK_TRUE;
@@ -39,7 +48,7 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
-  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, 2*sizeof(glm::mat4), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(GbufConst), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
   scene_image_views.reserve(target.images.size());
@@ -82,11 +91,16 @@ void SceneRenderer::update_scene(const glm::mat4 &camera, const glm::mat4 &proje
   
   node_process(*target.root, draw_calls, transforms, identity);
 
-  auto mvp = projection * camera;
-  auto camera_norm = glm::transpose(glm::inverse(camera));
+  GbufConst consts {
+    camera,
+    projection,
+    glm::radians(60.f),
+    16.f/9.f,
+    0.05,
+    80.f
+  };
 
-  gpu_transfer::write_buffer(view_proj_buffer, 0, sizeof(mvp), &mvp);
-  gpu_transfer::write_buffer(view_proj_buffer, sizeof(mvp), sizeof(camera_norm), &camera_norm);
+  gpu_transfer::write_buffer(view_proj_buffer, 0, sizeof(consts), &consts);
   gpu_transfer::write_buffer(transform_buffer, 0, sizeof(glm::mat4) * transforms.size(), transforms.data());
 }
 

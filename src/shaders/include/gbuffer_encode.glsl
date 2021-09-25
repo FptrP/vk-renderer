@@ -37,16 +37,27 @@ vec3 decode_normal(in vec2 uv)
   return normalize(v);
 }
 
-float linearize_depth(float d,float zNear,float zFar)
+float linearize_depth(float d, float zNear,float zFar)
 {
   return zNear * zFar / (zFar + d * (zNear - zFar));
 }
 
-vec3 reconstruct_uv(vec2 uv, float z_near, float z_far, float plane_dist, float d)
+float linearize_depth2(float d, float n, float f)
 {
-  float z = linearize_depth(d, z_near, z_far);
-  uv = 2 * uv - vec2(1, 1);
-  return vec3(uv * z/plane_dist, z);
+  return n * f / (d * (f - n) - f);
+}
+
+vec3 reconstruct_view_vec(vec2 uv, float d, float fovy, float aspect, float z_near, float z_far)
+{
+  float tg_alpha = tan(fovy/2);
+  float z = linearize_depth2(d, z_near, z_far);
+
+  float xd = 2 * uv.x - 1;
+  float yd = 2 * uv.y - 1;
+
+  float x = -(xd) * (z * aspect * tg_alpha);
+  float y = -(yd) * (z * tg_alpha);
+  return vec3(x, y, z);
 }
 
 #endif

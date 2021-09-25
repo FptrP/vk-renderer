@@ -128,7 +128,7 @@ int main() {
     
     gpu_transfer::process_requests(render_graph);
     scene_renderer.draw(render_graph, gbuffer);
-    add_backbuffer_subpass(render_graph, gbuffer.normal, sampler);
+    add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler);
     render_graph.submit(); 
   }
   

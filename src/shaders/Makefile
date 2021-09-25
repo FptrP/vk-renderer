@@ -8,7 +8,7 @@ FRAG_SPV = $(FRAG_SOURCES:%.frag=%_frag.spv)
 COMP_SPV = $(COMP_SOURCES:%.comp=%_comp.spv)
 
 
-GLSLC_FLAGS = -I include
+GLSLC_FLAGS = -g -I include
 
 all : $(VERT_SPV) $(FRAG_SPV) $(COMP_SPV)
 

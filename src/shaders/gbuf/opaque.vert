@@ -5,8 +5,12 @@ layout (location = 1) in vec3 in_norm;
 layout (location = 2) in vec2 in_uv;
 
 layout (set = 0, binding = 0) uniform GbufConst {
-  mat4 camera_projection;
-  mat4 camera_normal;
+  mat4 camera;
+  mat4 projection;
+  float fovy;
+  float aspect;
+  float z_near;
+  float z_far; 
 };
 
 struct Transform {
@@ -28,9 +32,7 @@ layout (push_constant) uniform push_data {
 };
 
 void main() {
-  out_normal = normalize((camera_normal * transforms[transform_index].normal * vec4(in_norm, 0)).xyz);
-  //mat4 norm_mat = transpose(inverse(camera_projection * transforms[transform_index].model));
-  //out_normal = normalize((norm_mat * vec4(in_norm, 0)).xyz);
+  out_normal = in_norm;
   out_uv = in_uv;
-  gl_Position = camera_projection * transforms[transform_index].model * vec4(in_pos, 1);
+  gl_Position = projection * camera * transforms[transform_index].model * vec4(in_pos, 1);
 }
