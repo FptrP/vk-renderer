@@ -9,7 +9,7 @@
 #include "gpu/descriptors.hpp"
 
 #define RENDERGRAPH_DEBUG 0
-#define RENDERGRAPH_USE_EVENTS 1
+#define RENDERGRAPH_USE_EVENTS 0
 
 namespace rendergraph {
   struct RenderGraph;

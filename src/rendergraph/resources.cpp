@@ -414,7 +414,10 @@ namespace rendergraph {
     std::cout << "\n";
   }
 
-  void TrackingState::dump_barriers() { 
+  void TrackingState::dump_barriers() {
+    std::cout << "0x300 "; dump_stages(0x300); std::cout << "\n";
+    std::cout << "0x700 "; dump_stages(0x700); std::cout << "\n";
+
     for (uint32_t i = 0; i < barriers.size(); i++) {
       std::cout << "Barrier " << i << "\n";
       dump_barrier(barriers[i]);

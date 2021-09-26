@@ -41,6 +41,7 @@ add_executable(main
   src/scene_renderer.cpp
   src/gpu_transfer.cpp
   src/defered_shading.cpp
+  src/ssao.cpp
 
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp

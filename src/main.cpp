@@ -13,6 +13,7 @@
 #include "scene_renderer.hpp"
 #include "defered_shading.hpp"
 #include "gpu_transfer.hpp"
+#include "ssao.hpp"
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -95,6 +96,10 @@ int main() {
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/shadows/default_frag.spv", "main"}
   });
   
+  gpu::create_program("ssao", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/ssao/shader_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssao/shader_frag.spv", "main"}
+  });
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
@@ -103,9 +108,13 @@ int main() {
   auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
 
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
+  auto ssao_texture = create_ssao_texture(render_graph, WIDTH, HEIGHT); 
+
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
   DeferedShadingPass shading_pass {render_graph};
+
+  SSAOPass ssao_pass {render_graph, ssao_texture};
 
   auto shadows_tex = render_graph.create_image(
     VK_IMAGE_TYPE_2D, 
@@ -145,6 +154,7 @@ int main() {
     gpu_transfer::process_requests(render_graph);
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     scene_renderer.draw(render_graph, gbuffer);
+    ssao_pass.draw(render_graph, gbuffer.depth, ssao_texture, SSAOInParams {projection, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f});
     shading_pass.draw(render_graph, gbuffer, shadows_tex, render_graph.get_backbuffer());
     add_present_subpass(render_graph);
     render_graph.submit(); 
