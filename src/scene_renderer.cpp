@@ -3,16 +3,27 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <cmath>
 
 Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) : w {width}, h {height} {
   auto tiling = VK_IMAGE_TILING_OPTIMAL;
   auto color_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
   auto depth_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
+  uint32_t depth_mips = std::floor(std::log2(std::max(width, height))) + 1;
+
   gpu::ImageInfo albedo_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo normal_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo mat_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
-  gpu::ImageInfo depth_info {VK_FORMAT_D24_UNORM_S8_UINT, VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT, width, height};
+  gpu::ImageInfo depth_info {
+    VK_FORMAT_D24_UNORM_S8_UINT, 
+    VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT,
+    width,
+    height,
+    1,
+    depth_mips,
+    1
+  };
 
   albedo = graph.create_image(VK_IMAGE_TYPE_2D, albedo_info, tiling, color_usage);
   normal = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);

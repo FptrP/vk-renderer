@@ -59,7 +59,7 @@ void SSAOPass::draw(rendergraph::RenderGraph &graph, rendergraph::ImageResourceI
   
   graph.add_task<PassData>("SSAO",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.rt = builder.use_color_attachment(target, 0, 0);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){

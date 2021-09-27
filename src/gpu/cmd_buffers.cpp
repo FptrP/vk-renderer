@@ -1,6 +1,7 @@
 #include "cmd_buffers.hpp"
 
 #include <stdexcept>
+#include <iostream>
 
 namespace gpu {
 
@@ -15,18 +16,52 @@ namespace gpu {
 
     VkFramebuffer fb = nullptr;
   };
-  
-  struct EventResource : CtxResource {
-    EventResource(VkEvent e) : handle {e} {}
 
-    void destroy(VkDevice device) override {
-      if (device && handle) {
-        vkDestroyEvent(device, handle, nullptr);
+  EventPool::EventPool(VkDevice device, uint32_t flips_count)
+    : api_device {device}, frame_count {flips_count}
+  {
+    allocated_events.resize(frame_count);
+  }
+  
+  EventPool::~EventPool() {
+    for (auto &pool : allocated_events) {
+      for (auto &elem : pool) {
+        vkDestroyEvent(api_device, elem, nullptr);
       }
     }
 
-    VkEvent handle;
-  };
+    for (auto &elem : used_events) {
+      vkDestroyEvent(api_device, elem, nullptr);
+    }
+  }
+
+  void EventPool::flip() {
+    auto &pool = allocated_events[frame_index];
+    for (auto elem : used_events) {
+      pool.push_back(elem);
+    }
+    used_events.clear();
+    frame_index = (frame_index + 1) % frame_count;
+  }
+  
+  VkEvent EventPool::allocate() {
+    auto &pool = allocated_events[frame_index];
+    
+    if (pool.size()) {
+      auto result = pool.back();
+      pool.pop_back();
+      vkResetEvent(api_device, result);
+      used_events.push_back(result);
+      return result;
+    }
+
+    VkEventCreateInfo info {VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+    VkEvent event;
+    VKCHECK(vkCreateEvent(api_device, &info, nullptr, &event));
+    used_events.push_back(event);
+    return event;
+  }
+
 
   void CmdContext::begin() {
     ubo_pool.reset();
@@ -328,18 +363,9 @@ namespace gpu {
     vkCmdBindIndexBuffer(cmd, buffer, offset, type);
   }
 
-  VkEvent CmdContext::signal_event(VkPipelineStageFlags stages) {
-    VkEventCreateInfo info {VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
-    VkEvent event;
-    VKCHECK(vkCreateEvent(api_device, &info, nullptr, &event));
-    delayed_free.push_back(new EventResource{event});
-
+  void CmdContext::signal_event(VkEvent event, VkPipelineStageFlags stages) {
     vkCmdSetEvent(cmd, event, stages);
-
-    return event;
   }
-
-
 
   TransferCmdPool::TransferCmdPool(VkDevice device, uint32_t queue_family, VkQueue queue)
     : api_device {device}, api_queue {queue}

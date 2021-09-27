@@ -88,6 +88,22 @@ namespace gpu {
     virtual ~CtxResource() {} 
   };
 
+  struct EventPool {
+    EventPool(VkDevice device, uint32_t flips_count);
+    ~EventPool();
+
+    void flip();
+    VkEvent allocate();
+
+  private:
+    VkDevice api_device = nullptr;
+    uint32_t frame_index = 0;
+    uint32_t frame_count = 0;
+
+    std::vector<std::vector<VkEvent>> allocated_events;
+    std::vector<VkEvent> used_events;
+  };
+
   constexpr uint64_t UBO_POOL_SIZE = 4 * (1 << 10); //4Kb
 
   struct CmdContext {
@@ -126,7 +142,7 @@ namespace gpu {
     void push_constants_graphics(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *constants);
     void push_constants_compute(uint32_t offset, uint32_t size, const void *constants);
     
-    VkEvent signal_event(VkPipelineStageFlags stages);
+    void signal_event(VkEvent event, VkPipelineStageFlags stages);
 
     VkCommandBuffer get_command_buffer() const { return cmd; }
     void clear_resources();

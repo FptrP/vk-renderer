@@ -42,6 +42,9 @@ add_executable(main
   src/gpu_transfer.cpp
   src/defered_shading.cpp
   src/ssao.cpp
+  src/imgui_pass.cpp
+  src/downsample_pass.cpp
+  src/ssr.cpp
 
   src/gpu/vkerror.cpp
   src/gpu/driver.cpp

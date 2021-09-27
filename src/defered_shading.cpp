@@ -10,11 +10,16 @@ struct ShaderConstants {
   float zfar;
 };
 
-DeferedShadingPass::DeferedShadingPass(rendergraph::RenderGraph &graph) {
+DeferedShadingPass::DeferedShadingPass(rendergraph::RenderGraph &graph, SDL_Window *window) {
+  auto format = graph.get_descriptor(graph.get_backbuffer()).format;
+  
   pipeline = gpu::create_graphics_pipeline();
   pipeline.set_program("defered_shading");
   pipeline.set_registers({});
   pipeline.set_vertex_input({});
+  pipeline.set_rendersubpass({false, {format}});
+
+  imgui_init(window, pipeline.get_renderpass());
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
@@ -56,7 +61,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       input.albedo = builder.sample_image(gbuffer.albedo, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.normal = builder.sample_image(gbuffer.normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.material = builder.sample_image(gbuffer.material, VK_SHADER_STAGE_FRAGMENT_BIT);
-      input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+      input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.rt = builder.use_color_attachment(out_image, 0, 0);
       input.shadow = builder.sample_image(shadow, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.ssao = builder.sample_image(ssao, VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -86,6 +91,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       cmd.bind_scissors(0, 0, w, h);
       cmd.bind_descriptors_graphics(0, {set}, {0});
       cmd.draw(3, 1, 0, 0);
+      imgui_draw(cmd.get_command_buffer());
       cmd.end_renderpass();
     }); 
 }

@@ -20,6 +20,7 @@ namespace rendergraph {
     submit_fences[frame_index].reset();
     vkResetCommandBuffer(cmd.get_command_buffer(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
     desc_pool.flip();
+    event_pool.flip();
 
     cmd.begin();
     cmd.clear_resources();

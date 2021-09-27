@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <vector>
-
+#include "imgui_pass.hpp"
 struct SubpassData {
   rendergraph::ImageViewId backbuff_view;
   rendergraph::ImageViewId texture_view;
@@ -44,16 +44,9 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       cmd.bind_viewport(viewport);
       cmd.bind_scissors(scissors);
       cmd.draw(3, 1, 0, 0);
+      imgui_draw(cmd.get_command_buffer());
       cmd.end_renderpass();
     });
-
-  graph.add_task<Nil>("presentPrepare",
-  [&](Nil &, rendergraph::RenderGraphBuilder &builder){
-    builder.prepare_backbuffer();
-  },
-  [=](Nil &, rendergraph::RenderResources&, gpu::CmdContext &){
-
-  });
 }
 
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler) {
@@ -90,16 +83,9 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
       cmd.bind_viewport(viewport);
       cmd.bind_scissors(scissors);
       cmd.draw(3, 1, 0, 0);
+      imgui_draw(cmd.get_command_buffer());
       cmd.end_renderpass();
     });
-
-  graph.add_task<Nil>("presentPrepare",
-  [&](Nil &, rendergraph::RenderGraphBuilder &builder){
-    builder.prepare_backbuffer();
-  },
-  [=](Nil &, rendergraph::RenderResources&, gpu::CmdContext &){
-
-  });
 }
 
 void add_present_subpass(rendergraph::RenderGraph &graph) {

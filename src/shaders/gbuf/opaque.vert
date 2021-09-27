@@ -32,7 +32,7 @@ layout (push_constant) uniform push_data {
 };
 
 void main() {
-  out_normal = in_norm;
+  out_normal = normalize(vec3(transforms[transform_index].normal * vec4(in_norm, 0)));
   out_uv = in_uv;
   gl_Position = projection * camera * transforms[transform_index].model * vec4(in_pos, 1);
 }

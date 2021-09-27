@@ -204,7 +204,9 @@ namespace rendergraph {
       tasks[i]->write_commands(res, api_cmd);
       api_cmd.end_renderpass(); //to be sure about barriers
       if (barriers[i].signal_mask) {
-        barriers[i].release_event = api_cmd.signal_event(barriers[i].signal_mask);
+        auto event = gpu.allocate_event();
+        barriers[i].release_event = event;
+        api_cmd.signal_event(event, barriers[i].signal_mask);
       }
     }
 #else

@@ -12,7 +12,7 @@
 namespace gpu {
 
 struct ImguiContext {
-  ImguiContext(SDL_Window *sdl_window, const gpu::Instance &instance, const gpu::Device &device, uint32_t image_count, const gpu::RenderSubpass &subpass)
+  ImguiContext(SDL_Window *sdl_window, const gpu::Instance &instance, const gpu::Device &device, uint32_t image_count, VkRenderPass renderpass)
     : window {sdl_window}, pool {device.api_device(), 1}
   {
     IMGUI_CHECKVERSION();
@@ -21,7 +21,6 @@ struct ImguiContext {
     ImGui::StyleColorsDark();
 
     ImGui_ImplSDL2_InitForVulkan(window);
-    //ImGui_ImplVulkan_LoadFunctions
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = instance.api_instance();
     init_info.PhysicalDevice = device.api_physical_device();
@@ -35,7 +34,12 @@ struct ImguiContext {
     init_info.ImageCount = image_count;
     init_info.CheckVkResultFn = check_vk_result;
     init_info.Subpass = 0;
-    ImGui_ImplVulkan_Init(&init_info, subpass.api_renderpass());
+    ImGui_ImplVulkan_Init(&init_info, renderpass);
+  }
+
+  ~ImguiContext() {
+    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplVulkan_Shutdown();
   }
 
   void new_frame() {
@@ -55,28 +59,14 @@ struct ImguiContext {
     ImGui_ImplSDL2_ProcessEvent(&event);
   }
 
-  void create_fonts(gpu::Device &device, VkCommandBuffer cmd) {
+  void create_fonts(gpu::TransferCmdPool &transfer_pool) {
+    auto cmd = transfer_pool.get_cmd_buffer();
+
     VkCommandBufferBeginInfo begin_cmd {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &begin_cmd);
     ImGui_ImplVulkan_CreateFontsTexture(cmd);
     vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo submit_info {
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .pNext = nullptr,
-      .waitSemaphoreCount = 0,
-      .pWaitSemaphores = nullptr,
-      .pWaitDstStageMask = 0,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &cmd,
-      .signalSemaphoreCount = 0,
-      .pSignalSemaphores = nullptr
-    };
-
-    auto fence = device.new_fence();
-    VkFence api_fence = fence;
-    VKCHECK(vkQueueSubmit(device.api_queue(), 1, &submit_info, fence));
-    VKCHECK(vkWaitForFences(device.api_device(), 1, &api_fence, VK_TRUE, ~0ull));
+    transfer_pool.submit_and_wait();
   }
 
 private:

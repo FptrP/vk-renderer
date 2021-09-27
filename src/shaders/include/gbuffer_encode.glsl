@@ -67,4 +67,15 @@ vec3 reconstruct_view_vec(vec2 uv, float d, float fovy, float aspect, float z_ne
   return vec3(x, y, z);
 }
 
+vec3 project_view_vec(vec3 v, float fovy, float aspect, float n, float f) {
+  float tg_alpha = tan(fovy/2);
+  float z = v.z;
+
+  float depth = f/(f-n) + f*n/(z * (f - n));
+  float pu = v.x/(- v.z * tg_alpha * aspect);
+  float pv = v.y/(-z * tg_alpha);
+
+  return vec3(pu, pv, depth);
+}
+
 #endif
