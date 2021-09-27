@@ -198,11 +198,7 @@ namespace rendergraph {
 #if RENDERGRAPH_USE_EVENTS
     for (uint32_t i = 0; i < tasks.size(); i++) {
       if (barriers.size() > i) {
-        if (i == 0) {
-          write_barrier(barriers[i], api_cmd.get_command_buffer());
-        } else {
-          write_wait_events(barriers, barriers[i], api_cmd.get_command_buffer());
-        }
+        resolve_barrier(barriers, i, api_cmd.get_command_buffer());
       }
 
       tasks[i]->write_commands(res, api_cmd);
@@ -422,6 +418,108 @@ namespace rendergraph {
     vkCmdWaitEvents(cmd,
       wait_events.size(),
       wait_events.data(),
+      src_stages,
+      dst_stages,
+      mem_barriers.size(),
+      mem_barriers.data(),
+      0,
+      nullptr,
+      image_barriers.size(),
+      image_barriers.data());
+  }
+
+  void RenderGraph::resolve_barrier(const std::vector<Barrier> &barriers, uint32_t index, VkCommandBuffer cmd) {
+    auto &barrier = barriers[index];
+    if (barrier.is_empty()) {
+      return;
+    }
+
+    std::vector<VkImageMemoryBarrier> image_barriers;
+    std::vector<VkMemoryBarrier> mem_barriers;
+
+    VkPipelineStageFlags src_stages = 0;
+    VkPipelineStageFlags dst_stages = 0;
+
+    for (const auto &state : barrier.image_barriers) {
+      auto &image = resources.get_image(state.id.id);
+      const auto &desc = resources.get_info(state.id.id);
+      
+      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
+        throw std::runtime_error {"Image subresource out of range"};
+      }
+      
+      src_stages |= state.src.stages;
+      dst_stages |= state.dst.stages;
+
+      VkImageMemoryBarrier img_barrier {
+        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        nullptr,
+        state.src.access,
+        state.dst.access,
+        state.src.layout,
+        state.dst.layout,
+        VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED,
+        image.get_image(),
+        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
+      };
+      
+      image_barriers.push_back(img_barrier);
+    }
+
+    for (const auto &state : barrier.buffer_barriers) {
+      src_stages |= state.src.stages;
+      dst_stages |= state.dst.stages;
+
+      VkMemoryBarrier mem_barrier {
+        VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        nullptr,
+        state.src.access,
+        state.dst.access
+      };
+
+      mem_barriers.push_back(mem_barrier);
+    }
+
+    if (!src_stages) {
+      src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+
+    if (index == 0 || barrier.max_wait_task_index == index - 1) {
+      vkCmdPipelineBarrier(cmd, 
+        src_stages, 
+        dst_stages, 
+        0, 
+        mem_barriers.size(), 
+        mem_barriers.data(), 
+        0,
+        nullptr,
+        image_barriers.size(),
+        image_barriers.data());
+      
+      return;
+    }
+
+    std::vector<VkEvent> events;
+    for (auto barrier_id : barrier.wait_tasks) {
+      auto &src_barrier = barriers[barrier_id];
+
+      if (!src_barrier.release_event) {
+        throw std::runtime_error {"Event is not created!"};
+      }
+      
+      src_stages |= src_barrier.signal_mask;
+      events.push_back(src_barrier.release_event);
+    }
+
+  
+    if (!events.size()) {
+      throw std::runtime_error {"Events size == 0"};
+    }
+
+    vkCmdWaitEvents(cmd,
+      events.size(),
+      events.data(),
       src_stages,
       dst_stages,
       mem_barriers.size(),

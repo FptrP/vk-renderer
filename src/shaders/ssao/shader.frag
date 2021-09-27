@@ -1,7 +1,7 @@
 #version 460
 #include <gbuffer_encode.glsl>
 
-#define SAMPLE_COUNT 8
+#define SAMPLE_COUNT 16
 
 layout (location = 0) in vec2 screen_uv;
 layout (location = 0) out float occlusion;
@@ -25,7 +25,7 @@ void main() {
   float sum = 0.f;
 
   for (uint i = 0; i < SAMPLE_COUNT; i++) {
-    vec3 pos = camera_pos + 0.03 * samples[i];
+    vec3 pos = camera_pos + 0.05 * samples[i];
     vec4 ndc = projection * vec4(pos, 1);
     ndc /= ndc.w;
 
@@ -33,7 +33,7 @@ void main() {
     float sample_depth = texture(depth, sample_uv).r;
     float pos_depth = ndc.z;
 
-    sum += (pos_depth < sample_depth) ? 1.0 : 0.0; 
+    sum += (pos_depth < sample_depth + 0.0000001) ? 1.0 : 0.0; 
   }
 
   sum /= SAMPLE_COUNT;

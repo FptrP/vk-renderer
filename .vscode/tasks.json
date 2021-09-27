@@ -18,6 +18,14 @@
       "options": {
         "cwd": "${workspaceFolder}/src/shaders"
       }
+    },
+    {
+      "label": "Run renderdoc",
+      "type": "shell",
+      "command": "runrd.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
     }
   ]
 }

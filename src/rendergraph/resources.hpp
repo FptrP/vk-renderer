@@ -140,6 +140,20 @@ namespace rendergraph {
     ImageSubresourceState dst;
   };
 
+  struct BufferReleaseState {
+    uint32_t acquire_at = INVALID_BARRIER_INDEX;
+    BufferResourceId id;
+    BufferState src;
+    BufferState dst;
+  };
+
+  struct ImageReleaseState {
+    uint32_t acquire_at = INVALID_BARRIER_INDEX;
+    ImageSubresourceId id; 
+    ImageSubresourceState src;
+    ImageSubresourceState dst;
+  };
+  
   struct ImageTrackingState {
     uint32_t barrier_id = INVALID_BARRIER_INDEX;
     uint32_t last_access = INVALID_BARRIER_INDEX;
@@ -159,11 +173,23 @@ namespace rendergraph {
   struct Barrier {
     std::vector<BufferBarrierState> buffer_barriers;
     std::vector<ImageBarrierState> image_barriers;
-    
+    uint32_t max_wait_task_index = INVALID_BARRIER_INDEX;
+
+    std::unordered_set<uint32_t> wait_tasks;
+
     VkPipelineStageFlags signal_mask = 0;
+    bool need_signal = false;
     VkEvent release_event = nullptr;
 
     bool is_empty() const { return buffer_barriers.empty() && image_barriers.empty(); }
+  };
+
+  struct TaskResources {
+    std::vector<BufferReleaseState> release_buffers;
+    std::vector<ImageReleaseState> release_images;
+    uint32_t release_index = INVALID_BARRIER_INDEX;
+    VkPipelineStageFlags stages = 0;
+    bool is_empty() const { return release_buffers.empty() &&  release_images.empty(); }
   };
 
   struct GraphResources {
@@ -222,7 +248,10 @@ namespace rendergraph {
     void next_task() { index++; }
 
     void flush(GraphResources &resources);
+    void gen_barriers();
+    void gen_event_sync();
     void dump_barriers();
+    void dump_task_resources();
     void clear();
 
     const std::vector<Barrier> &get_barriers() { return barriers; }
@@ -232,9 +261,11 @@ namespace rendergraph {
     uint32_t index = 0;
     std::vector<BufferResourceId> dirty_buffers;
     std::vector<ImageSubresourceId> dirty_images;
+    std::vector<TaskResources> task_resources;
     std::vector<Barrier> barriers;
 
     void dump_barrier(const Barrier &barrier);
+    void dump_task_resources(const TaskResources &res);
   };
 
   

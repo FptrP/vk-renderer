@@ -10,7 +10,7 @@ rendergraph::ImageResourceId create_ssao_texture(rendergraph::RenderGraph &graph
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 }
 
-constexpr uint32_t SAMPLES_COUNT = 8;
+constexpr uint32_t SAMPLES_COUNT = 16;
 
 struct SSAOParams {
   glm::mat4 projection;

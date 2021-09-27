@@ -37,7 +37,7 @@ void DeferedShadingPass::update_params(const glm::mat4 &camera, const glm::mat4 
   gpu_transfer::write_buffer(ubo_consts, 0, sizeof(ShaderConstants), &consts);
 }
 
-void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const rendergraph::ImageResourceId &shadow, const rendergraph::ImageResourceId &out_image) {
+void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const rendergraph::ImageResourceId &shadow, const rendergraph::ImageResourceId &ssao, const rendergraph::ImageResourceId &out_image) {
   struct PassData {
     rendergraph::ImageViewId albedo;
     rendergraph::ImageViewId normal;
@@ -45,6 +45,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
     rendergraph::ImageViewId depth;
     rendergraph::ImageViewId rt;
     rendergraph::ImageViewId shadow;
+    rendergraph::ImageViewId ssao;
     rendergraph::BufferResourceId ubo;
   };
   
@@ -58,7 +59,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
       input.rt = builder.use_color_attachment(out_image, 0, 0);
       input.shadow = builder.sample_image(shadow, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
-
+      input.ssao = builder.sample_image(ssao, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.ubo = ubo_consts;
       builder.use_uniform_buffer(input.ubo, VK_SHADER_STAGE_VERTEX_BIT);
     },
@@ -72,7 +73,8 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
         gpu::TextureBinding {2, resources.get_view(input.material), sampler},
         gpu::TextureBinding {3, resources.get_view(input.depth), sampler},
         gpu::UBOBinding {4, resources.get_buffer(input.ubo)}, 
-        gpu::TextureBinding {5, resources.get_view(input.shadow), sampler});
+        gpu::TextureBinding {5, resources.get_view(input.shadow), sampler},
+        gpu::TextureBinding {6, resources.get_view(input.ssao), sampler});
       
       const auto &image_info = resources.get_image(input.rt).get_info();
       auto w = image_info.width;

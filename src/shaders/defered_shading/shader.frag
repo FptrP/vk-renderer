@@ -20,6 +20,7 @@ layout (set = 0, binding = 4) uniform Constants {
 };
 
 layout (set = 0, binding = 5) uniform sampler2D shadow_map;
+layout (set = 0, binding = 6) uniform sampler2D SSAO_tex;
 
 const vec3 LIGHT_POS = vec3(0, 2, 0);
 
@@ -47,7 +48,10 @@ void main() {
     }
   }
 
-  vec3 color = albedo.rgb * clamp(shade + 0, 0.f, 1.f);
+
+  float ao = texture(SSAO_tex, screen_uv).r;
+  ao *= ao;
+  vec3 color = albedo.rgb * clamp(shade + 0, 0.f, 1.f) * clamp(2 * ao, 0.f, 1.f);
 
   out_color = vec4(color, 0);
 }

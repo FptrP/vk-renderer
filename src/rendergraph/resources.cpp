@@ -178,6 +178,38 @@ namespace rendergraph {
     }
   }
 
+  static void flush_resource(std::vector<TaskResources> &tasks, const ImageSubresourceId &id, const ImageTrackingState &track) {
+    if (tasks.size() <= track.wait_for) {
+      tasks.resize(track.wait_for + 1);
+    }
+
+    ImageReleaseState image_release {};
+    image_release.acquire_at = track.barrier_id;
+    image_release.id = id;
+    image_release.src = track.src;
+    image_release.dst = track.dst;
+
+    tasks[track.wait_for].release_images.push_back(image_release);
+    tasks[track.wait_for].release_index = std::min(tasks[track.wait_for].release_index, track.barrier_id);
+    tasks[track.wait_for].stages |= track.src.stages;
+  }
+
+  static void flush_resource(std::vector<TaskResources> &tasks, const BufferResourceId &id, const BufferTrackingState &track) {
+    if (tasks.size() <= track.wait_for) {
+      tasks.resize(track.wait_for + 1);
+    }
+
+    BufferReleaseState buffer_release {};
+    buffer_release.acquire_at = track.barrier_id;
+    buffer_release.id = id;
+    buffer_release.src = track.src;
+    buffer_release.dst = track.dst;
+
+    tasks[track.wait_for].release_buffers.push_back(buffer_release);
+    tasks[track.wait_for].release_index = std::min(tasks[track.wait_for].release_index, track.barrier_id);
+    tasks[track.wait_for].stages |= track.src.stages;
+  }
+
   static bool is_empty_state(const BufferTrackingState &track) {
     if (track.barrier_id == INVALID_BARRIER_INDEX) {
       return true;
@@ -217,7 +249,11 @@ namespace rendergraph {
       throw std::runtime_error {"Incompatible buffer usage in task"};
     }
 
-    flush_barrier(barriers, id, track);
+    if (track.wait_for != INVALID_BARRIER_INDEX) {
+      flush_resource(task_resources, id, track);
+    } else {
+      flush_barrier(barriers, id, track);
+    }
 
     track.barrier_id = index;
     track.wait_for = track.last_access;
@@ -248,7 +284,11 @@ namespace rendergraph {
       throw std::runtime_error {"Incompatible image usage in task"};
     }
 
-    flush_barrier(barriers, id, track);
+    if (track.wait_for != INVALID_BARRIER_INDEX) {
+      flush_resource(task_resources, id, track);
+    } else {
+      flush_barrier(barriers, id, track);
+    }
 
     track.wait_for = track.last_access;
     track.last_access = index;
@@ -261,7 +301,11 @@ namespace rendergraph {
     for (auto id : dirty_images) {
       auto &track = resources.get_resource_state(id);
 
-      flush_barrier(barriers, id, track);
+      if (track.wait_for != INVALID_BARRIER_INDEX) {
+        flush_resource(task_resources, id, track);
+      } else {
+        flush_barrier(barriers, id, track);
+      }
 
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;
@@ -272,21 +316,84 @@ namespace rendergraph {
     for (auto id : dirty_buffers) {
       auto &track = resources.get_resource_state(id);
 
-      if (barriers.size() <= track.barrier_id) {
-        barriers.resize(track.barrier_id + 1);
+      if (track.wait_for != INVALID_BARRIER_INDEX) {
+        flush_resource(task_resources, id, track);
+      } else {
+        flush_barrier(barriers, id, track);
       }
-
-      flush_barrier(barriers, id, track);
 
       track.src = track.dst;
       track.barrier_id = INVALID_BARRIER_INDEX;
       track.last_access = INVALID_BARRIER_INDEX;
       track.wait_for = INVALID_BARRIER_INDEX;
     }
+    
+    gen_barriers();
+    gen_event_sync();
 
     index = 0;
     dirty_buffers.clear();
     dirty_images.clear();
+  }
+
+  void TrackingState::gen_barriers() {
+    
+    for (uint32_t index = 0; index < task_resources.size(); index++) {
+      const auto &task = task_resources[index];
+      uint32_t release_index = task.release_index;
+      
+      if (task.is_empty())
+        continue;
+      
+      if (release_index == INVALID_BARRIER_INDEX) {
+        throw std::runtime_error {"Invalid release index"};
+      }
+
+      if (barriers.size() <= release_index) {
+        barriers.resize(release_index + 1);
+      }
+
+      auto &barrier = barriers[release_index];
+
+      for (const auto &res : task.release_buffers) {
+        BufferBarrierState buf_barrier {};
+        buf_barrier.wait_for = index;
+        buf_barrier.id = res.id;
+        buf_barrier.src = res.src;
+        buf_barrier.dst = res.dst;
+
+        barrier.buffer_barriers.push_back(buf_barrier);
+      }
+
+      for (const auto &res : task.release_images) {
+        ImageBarrierState img_barrier {};
+        img_barrier.wait_for = index;
+        img_barrier.id = res.id;
+        img_barrier.src = res.src;
+        img_barrier.dst = res.dst;
+        barrier.image_barriers.push_back(img_barrier);
+      }
+      
+      barrier.wait_tasks.emplace(index);
+
+      if (barrier.max_wait_task_index == INVALID_BARRIER_INDEX) {
+        barrier.max_wait_task_index = index;
+      }
+      barrier.max_wait_task_index = std::max(barrier.max_wait_task_index, index);
+    }
+  }
+
+  void TrackingState::gen_event_sync() {
+    for (uint32_t target_index = 1; target_index < barriers.size(); target_index++) {
+      auto &barrier = barriers[target_index];
+      if (barrier.max_wait_task_index == target_index - 1) {
+        continue; //use pipeline_barrier
+      }
+
+      for (auto task_id : barrier.wait_tasks) {
+        barriers[task_id].signal_mask = task_resources[task_id].stages;
+      }
+    }
   }
 
   void TrackingState::clear() {
@@ -294,6 +401,7 @@ namespace rendergraph {
     dirty_buffers.clear();
     dirty_images.clear();
     barriers.clear();
+    task_resources.clear();
   }
 
 
@@ -383,7 +491,7 @@ namespace rendergraph {
   void TrackingState::dump_barrier(const Barrier &barrier) {
 
     //std::cout << "Task " << barrier_id << "\n";
-
+    std::cout << "Max wait index " << barrier.max_wait_task_index << "\n";
     for (const auto &img_barrier : barrier.image_barriers) {
       std::cout << " - Image barrier " << "\n";
       std::cout << " --- id " << img_barrier.id.id.get_index() << "\n";
@@ -415,13 +523,45 @@ namespace rendergraph {
   }
 
   void TrackingState::dump_barriers() {
-    std::cout << "0x300 "; dump_stages(0x300); std::cout << "\n";
-    std::cout << "0x700 "; dump_stages(0x700); std::cout << "\n";
-
     for (uint32_t i = 0; i < barriers.size(); i++) {
       std::cout << "Barrier " << i << "\n";
       dump_barrier(barriers[i]);
     }
   } 
+
+  void TrackingState::dump_task_resources(const TaskResources &res) {
+    for (const auto &img_release : res.release_images) {
+      std::cout << " - Image " << "\n";
+      std::cout << " --- id " << img_release.id.id.get_index() << "\n";
+      std::cout << " --- mip = " << img_release.id.mip << " layer = " << img_release.id.layer << "\n";
+      std::cout << " --- acquired at " << img_release.acquire_at << "\n";
+      std::cout << " --- src_stages : "; dump_stages(img_release.src.stages); std::cout << "\n";
+      std::cout << " --- src_access : "; dump_access(img_release.src.access); std::cout << "\n";
+      std::cout << " --- src_layout : "; dump_layout(img_release.src.layout); std::cout << "\n";
+      
+      std::cout << " --- dst_stages : "; dump_stages(img_release.dst.stages); std::cout << "\n";
+      std::cout << " --- dst_access : "; dump_access(img_release.dst.access); std::cout << "\n";
+      std::cout << " --- dst_layout : "; dump_layout(img_release.dst.layout); std::cout << "\n";
+    }
+
+    for (const auto &buf_release : res.release_buffers) {
+
+      std::cout << " - Memory barrier for buffer " << buf_release.id.get_index() << "\n";
+      std::cout << " --- acquire at " << buf_release.acquire_at << "\n";
+      std::cout << " --- src_stages : "; dump_stages(buf_release.src.stages); std::cout << "\n";
+      std::cout << " --- src_access : "; dump_access(buf_release.src.access); std::cout << "\n";
+      
+      std::cout << " --- dst_stages : "; dump_stages(buf_release.dst.stages); std::cout << "\n";
+      std::cout << " --- dst_access : "; dump_access(buf_release.dst.access); std::cout << "\n";
+    }
+  }
+
+  void TrackingState::dump_task_resources() {
+    for (uint32_t i = 0; i < task_resources.size(); i++) {
+      std::cout << "Task " << i << "\n";
+      std::cout << "Stages "; dump_stages(task_resources[i].stages); std::cout << "\n";
+      dump_task_resources(task_resources[i]);
+    }
+  }
 
 }

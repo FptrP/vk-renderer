@@ -152,10 +152,10 @@ int main() {
     shading_pass.update_params(camera.get_view_mat(), shadow_mvp, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
     
     gpu_transfer::process_requests(render_graph);
-    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     scene_renderer.draw(render_graph, gbuffer);
+    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     ssao_pass.draw(render_graph, gbuffer.depth, ssao_texture, SSAOInParams {projection, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f});
-    shading_pass.draw(render_graph, gbuffer, shadows_tex, render_graph.get_backbuffer());
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
     add_present_subpass(render_graph);
     render_graph.submit(); 
   }
