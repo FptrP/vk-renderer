@@ -75,7 +75,7 @@ vec3 project_view_vec(vec3 v, float fovy, float aspect, float n, float f) {
   float pu = v.x/(- v.z * tg_alpha * aspect);
   float pv = v.y/(-z * tg_alpha);
 
-  return vec3(pu, pv, depth);
+  return vec3(0.5 * pu + 0.5, 0.5 * pv + 0.5, depth);
 }
 
 #endif

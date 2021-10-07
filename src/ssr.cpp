@@ -16,6 +16,15 @@ void add_ssr_pass(
   const SSRParams &params)
 {
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER); 
+  
+  auto depth_sampler_info = gpu::DEFAULT_SAMPLER;
+  depth_sampler_info.minFilter = VK_FILTER_NEAREST;
+  depth_sampler_info.magFilter = VK_FILTER_NEAREST;
+  depth_sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  depth_sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  depth_sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+
+  auto depth_sampler = gpu::create_sampler(depth_sampler_info);
 
   auto pipeline = gpu::create_graphics_pipeline();
   pipeline.set_program("ssr");
@@ -29,7 +38,7 @@ void add_ssr_pass(
 
   graph.add_task<Input>("SSR",
     [&](Input &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
       input.normal = builder.sample_image(normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.color = builder.sample_image(color, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.rt = builder.use_color_attachment(out, 0, 0);
@@ -43,7 +52,7 @@ void add_ssr_pass(
 
       gpu::write_set(set,
         gpu::TextureBinding {0, resources.get_view(input.normal), sampler},
-        gpu::TextureBinding {1, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {1, resources.get_view(input.depth), depth_sampler},
         gpu::TextureBinding {2, resources.get_view(input.color), sampler},
         gpu::UBOBinding {3, cmd.get_ubo_pool(), block});
 
