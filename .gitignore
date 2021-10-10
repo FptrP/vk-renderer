@@ -8,3 +8,4 @@ assets/*
 *.spv
 
 !src/shaders/Makefile
+push.sh
