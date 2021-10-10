@@ -1,6 +1,6 @@
 #version 460
 #include <gbuffer_encode.glsl>
-
+#include <screen_trace.glsl>
 layout (location = 0) in vec2 screen_uv;
 
 layout (set = 0, binding = 0) uniform sampler2D normal_tex;
@@ -51,22 +51,36 @@ void main() {
 
   const int LOD = 2;
   vec3 out_ray;
-  //if (simple_raymarch(depth_tex, start, end, LOD, out_ray))
-  if (hiz_trace(depth_tex, start, end, out_ray))
+  bool valid_hit;
+
+  out_ray = hierarchical_raymarch(depth_tex, start, end - start, 0, 50, valid_hit);
+  if (valid_hit)
   {
+    vec2 screen_size = textureSize(frame_tex, 0);
+    vec2 dist0 = abs(out_ray.xy - start.xy);
+    vec2 min_dist = vec2(2)/screen_size;
+
+    if (dist0.x < min_dist.x && dist0.y < min_dist.y) {
+      out_reflection = vec4(0, 0, 0, 0);
+      return;
+    }
+
     vec3 hit_normal_world = sample_gbuffer_normal(normal_tex, out_ray.xy);
     vec3 hit_normal = (camera_normal * vec4(hit_normal_world, 0)).xyz;
 
     if (dot(hit_normal, R) > 0) {
-      out_reflection = vec4(1, 0, 0, 0);
+      out_reflection = vec4(0, 0, 0, 0);
       return;
     }
 
-    out_reflection = texture(frame_tex, out_ray.xy);
+    vec2 fov = 0.05 * vec2(screen_size.y / screen_size.x, 1);
+    vec2 border = smoothstep(vec2(0), fov, out_ray.xy) * (1 - smoothstep(vec2(1 - fov), vec2(1), out_ray.xy));
+    float coef = border.x * border.y;
+    out_reflection = coef * texture(frame_tex, out_ray.xy);
     return;
   }
 
-  out_reflection = vec4(1, 0, 0, 0);
+  out_reflection = vec4(0, 0, 0, 0);
 }
 
 bool simple_raymarch(in sampler2D depth_tex, vec3 start, vec3 end, const int lod, out vec3 out_ray) {
