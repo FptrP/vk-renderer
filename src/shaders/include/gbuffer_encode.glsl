@@ -44,11 +44,6 @@ vec3 sample_gbuffer_normal(in sampler2D normal_tex, in vec2 uv)
 }
 
 
-float linearize_depth(float d, float zNear,float zFar)
-{
-  return zNear * zFar / (zFar + d * (zNear - zFar));
-}
-
 float linearize_depth2(float d, float n, float f)
 {
   return n * f / (d * (f - n) - f);
@@ -67,6 +62,10 @@ vec3 reconstruct_view_vec(vec2 uv, float d, float fovy, float aspect, float z_ne
   return vec3(x, y, z);
 }
 
+float encode_depth(float z, float n, float f) {
+  return f/(f-n) + f*n/(z * (f - n));
+}
+
 vec3 project_view_vec(vec3 v, float fovy, float aspect, float n, float f) {
   float tg_alpha = tan(fovy/2);
   float z = v.z;
@@ -76,6 +75,55 @@ vec3 project_view_vec(vec3 v, float fovy, float aspect, float n, float f) {
   float pv = v.y/(-z * tg_alpha);
 
   return vec3(0.5 * pu + 0.5, 0.5 * pv + 0.5, depth);
+}
+
+vec3 clip_screen(vec3 start, vec3 end) {
+  vec3 delta = normalize(end - start);
+  float t = dot(end - start, delta);
+  float u_bound = 1e38;
+  float v_bound = 1e38;
+
+  
+  if (abs(delta.x) > 0.00001)
+    u_bound = max((1 - start.x)/delta.x, -start.x/delta.x);
+  if (abs(delta.y) > 0.00001)
+    v_bound = max((1 - start.y)/delta.y, -start.y/delta.y); 
+  
+  float t_bound = min(t, min(u_bound, v_bound));
+  return start + t_bound * delta;
+}
+
+vec2 clip_screen(vec2 start, vec2 end) {
+  vec2 delta = normalize(end - start);
+  float t = dot(end - start, delta);
+  float u_bound = 1e38;
+  float v_bound = 1e38;
+
+  
+  if (abs(delta.x) > 0.00001)
+    u_bound = max((1 - start.x)/delta.x, -start.x/delta.x);
+  if (abs(delta.y) > 0.00001)
+    v_bound = max((1 - start.y)/delta.y, -start.y/delta.y); 
+  
+  float t_bound = min(t, min(u_bound, v_bound));
+  return start + t_bound * delta;
+}
+
+vec2 extend_direction(vec2 start, vec2 delta) {
+  float u_bound = 1e38;
+  float v_bound = 1e38;
+
+  if (abs(delta.x) <= 0.00001 && abs(delta.y) <= 0.00001) {
+    return delta;
+  }
+  
+  if (abs(delta.x) > 0.00001)
+    u_bound = max((1 - start.x)/delta.x, -start.x/delta.x);
+  if (abs(delta.y) > 0.00001)
+    v_bound = max((1 - start.y)/delta.y, -start.y/delta.y); 
+  
+  float t_bound = min(u_bound, v_bound);
+  return start + (t_bound - 0.001) * delta;
 }
 
 #endif

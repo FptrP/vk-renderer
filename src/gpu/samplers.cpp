@@ -1,6 +1,8 @@
 #include "samplers.hpp"
 
+#include <iostream>
 #include <cstring>
+#include <cmath>
 
 namespace gpu {
 
@@ -25,7 +27,20 @@ namespace gpu {
   }
 
   bool SamplerEqualFunc::operator()(const VkSamplerCreateInfo &l, const VkSamplerCreateInfo &r) const {
-    return !std::memcmp(&l, &r, sizeof(l));
+    return 
+      (l.magFilter == r.magFilter) &&
+      (l.minFilter == r.minFilter) &&
+      (l.mipmapMode == r.mipmapMode) &&
+      (l.addressModeU == r.addressModeU) &&
+      (l.addressModeV == r.addressModeV) &&
+      (std::abs(l.mipLodBias - r.mipLodBias) < 1e-6) &&
+      (l.anisotropyEnable == r.anisotropyEnable) &&
+      (std::abs(l.maxAnisotropy - r.maxAnisotropy) < 1e-6) &&
+      (l.compareEnable == r.compareEnable) &&
+      (std::abs(l.minLod - r.minLod) < 1e-6) &&
+      (std::abs(l.maxLod - r.maxLod) < 1e-6) &&
+      (l.borderColor == r.borderColor) &&
+      (l.unnormalizedCoordinates == r.unnormalizedCoordinates);
   }
 
   SamplerPool::~SamplerPool() {
@@ -44,6 +59,9 @@ namespace gpu {
   }
 
   VkSampler SamplerPool::get_sampler(const VkSamplerCreateInfo &info) {
+    //SamplerHashFunc hash_fun {};
+    //std::cout << hash_fun(info) << "\n";
+
     auto it = samplers.find(info);
     if (it != samplers.end()) {
       return it->second;

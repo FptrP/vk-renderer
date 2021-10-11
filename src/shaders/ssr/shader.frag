@@ -53,7 +53,7 @@ void main() {
   vec3 out_ray;
   bool valid_hit;
 
-  out_ray = hierarchical_raymarch(depth_tex, start, end - start, 0, 50, valid_hit);
+  out_ray = hierarchical_raymarch(depth_tex, start, end - start, 0, 100, valid_hit);
   if (valid_hit)
   {
     vec2 screen_size = textureSize(frame_tex, 0);
@@ -73,6 +73,12 @@ void main() {
       return;
     }
 
+    float hit_depth = textureLod(depth_tex, out_ray.xy, 0).x;
+    if (out_ray.z > hit_depth + 0.0001) {
+      out_reflection = vec4(0, 0, 0, 0);
+      return; 
+    }
+
     vec2 fov = 0.05 * vec2(screen_size.y / screen_size.x, 1);
     vec2 border = smoothstep(vec2(0), fov, out_ray.xy) * (1 - smoothstep(vec2(1 - fov), vec2(1), out_ray.xy));
     float coef = border.x * border.y;
@@ -81,32 +87,6 @@ void main() {
   }
 
   out_reflection = vec4(0, 0, 0, 0);
-}
-
-bool simple_raymarch(in sampler2D depth_tex, vec3 start, vec3 end, const int lod, out vec3 out_ray) {
-  vec3 delta = end - start;
-  vec2 tex_size = textureSize(depth_tex, lod);
-
-  ivec2 pixel_dist = ivec2(tex_size * abs(delta.xy));
-  int steps = max(pixel_dist.x, pixel_dist.y);
-  vec3 vec_step = delta/steps;
-  
-  for (int i = 2; i < steps - 1; i++) {
-    vec3 p = start + vec_step * i;
-    float depth = texelFetch(depth_tex, ivec2(floor(p.xy * tex_size)), lod).x;
-
-    if (p.z - 0.00001 > depth) {
-      
-      if (p.z - depth > 0.01) {
-        return false;  
-      }
-
-      out_ray = p;
-      return true;
-    }
-  }
-
-  return false;
 }
 
 vec2 get_cell(vec2 ray, vec2 cell_count) {

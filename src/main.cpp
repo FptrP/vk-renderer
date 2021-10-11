@@ -180,8 +180,8 @@ int main() {
       glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
     });
 
-    //shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, ssr_texture, sampler);
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
+    //add_backbuffer_subpass(render_graph, ssr_texture, sampler);
     add_present_subpass(render_graph);
     render_graph.submit();  
   }

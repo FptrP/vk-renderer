@@ -3,6 +3,7 @@
 
 struct ShaderConstants {
   glm::mat4 inverse_camera;
+  glm::mat4 camera;
   glm::mat4 shadow_mvp;
   float fovy;
   float aspect;
@@ -32,6 +33,7 @@ DeferedShadingPass::DeferedShadingPass(rendergraph::RenderGraph &graph, SDL_Wind
 void DeferedShadingPass::update_params(const glm::mat4 &camera, const glm::mat4 &shadow, float fovy, float aspect, float znear, float zfar) {
   ShaderConstants consts {
     glm::inverse(camera),
+    camera,
     shadow,
     fovy,
     aspect,
@@ -61,7 +63,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       input.albedo = builder.sample_image(gbuffer.albedo, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.normal = builder.sample_image(gbuffer.normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.material = builder.sample_image(gbuffer.material, VK_SHADER_STAGE_FRAGMENT_BIT);
-      input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
       input.rt = builder.use_color_attachment(out_image, 0, 0);
       input.shadow = builder.sample_image(shadow, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.ssao = builder.sample_image(ssao, VK_SHADER_STAGE_FRAGMENT_BIT);
