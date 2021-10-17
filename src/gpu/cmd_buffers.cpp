@@ -367,14 +367,16 @@ namespace gpu {
     vkCmdSetEvent(cmd, event, stages);
   }
 
-  TransferCmdPool::TransferCmdPool(VkDevice device, uint32_t queue_family, VkQueue queue)
-    : api_device {device}, api_queue {queue}
+  TransferCmdPool::TransferCmdPool()
   {
+    auto qinfo = app_main_queue();
+    auto api_device = internal::app_vk_device();
+
     VkCommandPoolCreateInfo pool_info {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .pNext = nullptr,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT|VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-      .queueFamilyIndex = queue_family
+      .queueFamilyIndex = qinfo.family
     };
 
     VKCHECK(vkCreateCommandPool(api_device, &pool_info, nullptr, &pool));
@@ -395,19 +397,18 @@ namespace gpu {
   }
 
   TransferCmdPool::TransferCmdPool(TransferCmdPool &&tpool)
-    : api_device {tpool.api_device}, api_queue {tpool.api_queue},
-      pool {tpool.pool}, cmd {tpool.cmd}, fence {tpool.fence},
+    : pool {tpool.pool}, cmd {tpool.cmd}, fence {tpool.fence},
       buffer_acquired {tpool.buffer_acquired}
   {
-    tpool.api_device = nullptr;
   }
 
   TransferCmdPool::~TransferCmdPool() {
-    if (api_device && fence) {
+    auto api_device = internal::app_vk_device();
+    if (fence) {
       vkDestroyFence(api_device, fence, nullptr);
     }
 
-    if (api_device && pool) {
+    if (pool) {
       vkDestroyCommandPool(api_device, pool, nullptr);
     }
   }
@@ -421,6 +422,9 @@ namespace gpu {
     return cmd;
   }
   void TransferCmdPool::submit_and_wait() {
+    auto api_device = internal::app_vk_device();
+    auto api_queue = app_main_queue().queue;
+
     if (!buffer_acquired) {
       return;
     }
@@ -446,8 +450,6 @@ namespace gpu {
   }
 
   const TransferCmdPool &TransferCmdPool::operator=(TransferCmdPool &&tpool) {
-    std::swap(api_device, tpool.api_device);
-    std::swap(api_queue, tpool.api_queue);
     std::swap(pool, tpool.pool);
     std::swap(cmd, tpool.cmd);
     std::swap(fence, tpool.fence);

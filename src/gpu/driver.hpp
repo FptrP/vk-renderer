@@ -5,15 +5,9 @@
 #include <lib/vk_mem_alloc.h>
 #include <set>
 #include <string>
+#include <functional>
 
-#include "vkerror.hpp"
-#include "resources.hpp"
-#include "shader.hpp"
-#include "cmd_buffers.hpp"
-#include "sync_primitive.hpp"
-#include "dynbuffer.hpp"
-#include "samplers.hpp"
-#include "descriptors.hpp"
+#include "common.hpp"
 
 namespace gpu {
 
@@ -85,30 +79,13 @@ namespace gpu {
 
     Device(Device&) = delete;
     const Device &operator=(const Device &dev) = delete;
-
-    Image new_image() const { return {logical_device, allocator}; }
-    Buffer new_buffer() const { return {allocator}; }
-    DescriptorPool new_descriptor_pool(uint32_t flips_count) { return {logical_device, flips_count}; }
-    CmdBufferPool new_command_pool() const { return CmdBufferPool {logical_device, queue_family_index}; }
-    Semaphore new_semaphore() const { return {logical_device}; }
-    Fence new_fence(bool signaled = false) const { return {logical_device, signaled}; }
-    TransferCmdPool new_transfer_pool() const { return TransferCmdPool {logical_device, queue_family_index, queue}; }
     
-    Swapchain create_swapchain(VkSurfaceKHR surface, VkExtent2D window_extent, VkImageUsageFlags usage);
-    std::vector<Image> get_swapchain_images(const Swapchain &swapchain);
-
     VkDevice api_device() const { return logical_device; }
     VkQueue api_queue() const { return queue; }
     VkPhysicalDevice api_physical_device() const { return physical_device; }
     uint32_t get_queue_family() const { return queue_family_index; }
-
-    template <typename T>
-    DynBuffer<T> create_dynbuffer(uint32_t elems) const { return DynBuffer<T> {allocator, properties.limits.minUniformBufferOffsetAlignment, elems}; }
-
-    Sampler create_sampler(VkSamplerCreateInfo info) const { return Sampler {logical_device, info}; }
     VmaAllocator get_allocator() const { return allocator; }
-
-    std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
+    const VkPhysicalDeviceProperties get_properties() const { return properties; }
 
   private:
     VkPhysicalDevice physical_device {nullptr};
@@ -118,40 +95,6 @@ namespace gpu {
 
     uint32_t queue_family_index;
     VkQueue queue {nullptr};
-  };
-
-  struct Swapchain {
-    Swapchain(VkDevice device, VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkExtent2D window, VkImageUsageFlags image_usage);
-    ~Swapchain();
-
-    Swapchain(Swapchain &&o) 
-      : base {o.base}, handle {o.handle}, descriptor {o.descriptor}
-    {
-      o.handle = nullptr;
-    }
-
-    const Swapchain &operator=(Swapchain &&o) {
-      std::swap(base, o.base);
-      std::swap(handle, o.handle);
-      std::swap(descriptor, o.descriptor);
-      return *this;
-    }
-
-    uint32_t get_images_count() const {
-      uint32_t count;
-      vkGetSwapchainImagesKHR(base, handle, &count, nullptr);
-      return count;
-    }
-
-    VkSwapchainKHR api_swapchain() const { return handle; }
-    const ImageInfo &get_image_info() const { return descriptor; }
-  private:
-    VkDevice base {nullptr};
-    VkSwapchainKHR handle {nullptr};
-    ImageInfo descriptor {};
-
-    Swapchain(const Swapchain&) = delete;
-    const Swapchain& operator=(const Swapchain&) = delete;
   };
 
   struct Surface {
@@ -166,7 +109,7 @@ namespace gpu {
 
     VkSurfaceKHR api_surface() const { return handle; }
 
-    const Surface &operator=(Surface &&o) {
+    Surface &operator=(Surface &&o) {
       std::swap(base, o.base);
       std::swap(handle, o.handle);
       return *this;
@@ -180,11 +123,25 @@ namespace gpu {
     const Surface &operator=(const Surface&) = delete;
   };
 
-  template <typename... Bindings> 
-  void write_set(Device &device, VkDescriptorSet set, const Bindings&... bindings) {
-    internal::write_set(device.api_device(), set, bindings...);
-  }
+  using SurfaceCreateCB = std::function<VkSurfaceKHR(VkInstance)>;
 
+  void create_context(const InstanceConfig &icfg, PFN_vkDebugUtilsMessengerCallbackEXT callback, DeviceConfig dcfg, SurfaceCreateCB &&surface_cb);
+  void close_context();
+
+  Instance &app_instance();
+  Device &app_device();
+  Surface &app_surface();
+
+  struct QueueInfo {
+    VkQueue queue;
+    uint32_t family;
+  };
+
+  QueueInfo app_main_queue();
+
+  namespace internal {
+    VkDevice app_vk_device();
+  }
 }
 
 #endif

@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include "imgui_pass.hpp"
+
 struct SubpassData {
   rendergraph::ImageViewId backbuff_view;
   rendergraph::ImageViewId texture_view;
@@ -31,7 +32,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
 
-      gpu::write_set(resources.get_gpu(), set,
+      gpu::write_set(set,
         gpu::TextureBinding {0, resources.get_image(data.texture_view), sampler});
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
@@ -70,7 +71,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
 
-      gpu::write_set(resources.get_gpu(), set,
+      gpu::write_set(set,
         gpu::TextureBinding {0, image, sampler});
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};

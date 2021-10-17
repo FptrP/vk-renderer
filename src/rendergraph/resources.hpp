@@ -8,7 +8,7 @@
 #include <functional>
 #include <unordered_map>
 
-#include "gpu/driver.hpp"
+#include <gpu/gpu.hpp>
 
 namespace rendergraph {
 
@@ -193,7 +193,7 @@ namespace rendergraph {
   };
 
   struct GraphResources {
-    GraphResources(VmaAllocator alloc, VkDevice dev) : allocator {alloc}, api_device {dev} {}
+    GraphResources() {}
     
     ImageResourceId create_global_image(const ImageDescriptor &desc);
     ImageResourceId create_global_image_ref(gpu::Image &image);
@@ -232,9 +232,6 @@ namespace rendergraph {
     struct FrameBuffer {
       gpu::Buffer vk_buffer;
     };
-    
-    VmaAllocator allocator {nullptr};
-    VkDevice api_device {nullptr};
 
     std::vector<uint32_t> image_remap;
     std::vector<uint32_t> buffer_remap;

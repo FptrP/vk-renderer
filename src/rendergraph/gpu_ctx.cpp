@@ -4,8 +4,8 @@ namespace rendergraph {
 
   void GpuState::acquire_image() {
     VKCHECK(vkAcquireNextImageKHR(
-      device.api_device(),
-      swapchain.api_swapchain(),
+      gpu::app_device().api_device(),
+      gpu::app_swapchain().api_swapchain(),
       ~0ull,
       image_acquire_semaphores[backbuf_sem_index],
       nullptr, &backbuf_index));
@@ -16,7 +16,7 @@ namespace rendergraph {
     auto &cmd = cmd_buffers[frame_index]; 
     VkFence cmd_fence = submit_fences[frame_index];
 
-    vkWaitForFences(device.api_device(), 1, &cmd_fence, VK_TRUE, UINT64_MAX);
+    vkWaitForFences(gpu::app_device().api_device(), 1, &cmd_fence, VK_TRUE, UINT64_MAX);
     submit_fences[frame_index].reset();
     vkResetCommandBuffer(cmd.get_command_buffer(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
     desc_pool.flip();
@@ -31,7 +31,7 @@ namespace rendergraph {
       auto &cmd = cmd_buffers[frame_index];
       auto api_cmd = cmd.get_command_buffer();
       VkFence cmd_fence = submit_fences[frame_index];
-      auto queue = device.api_queue();
+      auto queue = gpu::app_device().api_queue();
 
       cmd.end();
 
@@ -57,8 +57,8 @@ namespace rendergraph {
     auto api_cmd = cmd.get_command_buffer();
     VkFence cmd_fence = submit_fences[frame_index];
     
-    auto api_swapchain = swapchain.api_swapchain();
-    auto queue = device.api_queue();
+    auto api_swapchain = gpu::app_swapchain().api_swapchain();
+    auto queue = gpu::app_device().api_queue();
 
     cmd.end();
 

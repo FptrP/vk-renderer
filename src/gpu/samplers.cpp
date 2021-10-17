@@ -44,16 +44,13 @@ namespace gpu {
   }
 
   SamplerPool::~SamplerPool() {
-    if (!device)
-      return;
 
     for (auto& [k, v] : samplers) {
-      vkDestroySampler(device, v, nullptr);
+      vkDestroySampler(internal::app_vk_device(), v, nullptr);
     }
   }
 
   const SamplerPool &SamplerPool::operator=(SamplerPool &&pool) {
-    std::swap(device, pool.device);
     samplers = std::move(pool.samplers);
     return *this;
   }
@@ -68,7 +65,7 @@ namespace gpu {
     }
 
     VkSampler new_sampler {nullptr};
-    VKCHECK(vkCreateSampler(device, &info, nullptr, &new_sampler));
+    VKCHECK(vkCreateSampler(internal::app_vk_device(), &info, nullptr, &new_sampler));
     samplers[info] = new_sampler;
     return new_sampler;
   }

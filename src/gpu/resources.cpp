@@ -23,6 +23,8 @@ namespace gpu {
     
     VmaAllocationInfo info {};
     
+    auto base = app_device().get_allocator();
+
     VKCHECK(vmaCreateBuffer(base, &buffer_info, &alloc_info, &handle, &allocation, &info));
     
     VkMemoryPropertyFlags mem_flags = 0;
@@ -35,6 +37,8 @@ namespace gpu {
   void Buffer::close() {
     if (!handle) return;
 
+    auto base = app_device().get_allocator();
+
     vmaDestroyBuffer(base, handle, allocation);
     base = nullptr;
     handle = nullptr;
@@ -46,11 +50,13 @@ namespace gpu {
 
   void Buffer::flush(uint64_t offset, uint64_t size) {
     if (coherent) return;
+    auto base = app_device().get_allocator();
     vmaFlushAllocation(base, allocation, offset, size);
   }
 
   void Image::create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
     close();
+    auto allocator = app_device().get_allocator();
 
     VkImageCreateInfo image_info {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -85,6 +91,9 @@ namespace gpu {
   }
 
   void Image::close() {
+    auto allocator = app_device().get_allocator();
+    auto device = app_device().api_device();
+
     for (const auto &pair : views) {
       vkDestroyImageView(device, pair.second, nullptr);
     }
@@ -99,8 +108,9 @@ namespace gpu {
   }
   
 
-
   VkImageView Image::get_view(ImageViewRange range) {
+    auto device = app_device().api_device();
+
     range.aspect &= descriptor.aspect;
     if (!range.aspect) {
       range.aspect = descriptor.aspect;

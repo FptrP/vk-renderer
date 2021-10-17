@@ -52,7 +52,7 @@ namespace gpu_transfer {
     auto buf_count = graph.get_frames_count();
 
     for (uint32_t i = 0; i < buf_count; i++) {
-      auto buf = gpu::create_buffer();
+      gpu::Buffer buf;
       buf.create(VMA_MEMORY_USAGE_CPU_TO_GPU, MAX_TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
       g_transfer_state->transfer_buffers.push_back(std::move(buf));
     }

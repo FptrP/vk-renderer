@@ -13,7 +13,7 @@ namespace rendergraph {
     ptr.reset(new ImageTrackingState[count]);
 
     global_images.emplace_back(GlobalImage {
-      gpu::Image {api_device, allocator}, 
+      {}, 
       std::move(ptr)
     });
 
@@ -35,7 +35,7 @@ namespace rendergraph {
     ptr.reset(new ImageTrackingState[count]);
 
     global_images.emplace_back(GlobalImage {
-      gpu::Image {api_device, allocator}, 
+      {}, 
       std::move(ptr)
     });
 
@@ -52,7 +52,7 @@ namespace rendergraph {
     uint32_t buffer_index = global_buffers.size();
 
     global_buffers.emplace_back(GlobalBuffer {
-      gpu::Buffer {allocator},
+      {},
       {}
     });
 

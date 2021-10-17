@@ -135,7 +135,7 @@ namespace scene {
 
   }
 
-  static void load_verts(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const aiScene *scene, CompiledScene &out_scene) {
+  static void load_verts(gpu::TransferCmdPool &transfer_pool, const aiScene *scene, CompiledScene &out_scene) {
     std::vector<Vertex> cpu_verts;
     std::vector<uint32_t> cpu_indexes;
     load_verts_memory(scene, out_scene.meshes, cpu_verts, cpu_indexes);
@@ -147,7 +147,7 @@ namespace scene {
     out_scene.index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
     const uint32_t TRANSFER_SIZE = 10 * 1024;
-    auto transfer_buffer = device.new_buffer();
+    gpu::Buffer transfer_buffer;
     transfer_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
     
     copy_data(transfer_pool, out_scene.vertex_buffer, transfer_buffer, verts_size, (uint8_t*)cpu_verts.data());
@@ -162,7 +162,7 @@ namespace scene {
     std::string mr_path;
   };
 
-  static uint32_t load_scene_image(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, std::unordered_map<std::string, uint32_t> &loaded_images, CompiledScene &out_scene) {
+  static uint32_t load_scene_image(gpu::TransferCmdPool &transfer_pool, const std::string &path, std::unordered_map<std::string, uint32_t> &loaded_images, CompiledScene &out_scene) {
     if (path.empty()) {
       return UINT32_MAX;
     }
@@ -172,7 +172,7 @@ namespace scene {
       return iter->second;
     }
     
-    auto img = load_image_rgba8(device, transfer_pool, path.c_str());
+    auto img = load_image_rgba8(transfer_pool, path.c_str());
     auto index = out_scene.images.size();
     out_scene.images.push_back(std::move(img));
     loaded_images[path] = index;
@@ -180,7 +180,7 @@ namespace scene {
     return index;
   }
 
-  static void load_materials(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const aiScene *scene, const std::string &model_path, CompiledScene &out_scene) {
+  static void load_materials(gpu::TransferCmdPool &transfer_pool, const aiScene *scene, const std::string &model_path, CompiledScene &out_scene) {
     out_scene.materials.reserve(scene->mNumMaterials);
 
     std::cout << "Materials count " << scene->mNumMaterials << "\n";
@@ -213,8 +213,8 @@ namespace scene {
       } 
 
       Material material {};
-      material.albedo_tex_index = load_scene_image(device, transfer_pool, mat.albedo_path, loaded_images, out_scene);
-      material.metalic_roughness_index = load_scene_image(device, transfer_pool, mat.mr_path, loaded_images, out_scene);
+      material.albedo_tex_index = load_scene_image(transfer_pool, mat.albedo_path, loaded_images, out_scene);
+      material.metalic_roughness_index = load_scene_image(transfer_pool, mat.mr_path, loaded_images, out_scene);
       out_scene.materials.push_back(material);
     }
 
@@ -242,13 +242,13 @@ namespace scene {
     }
   }
 
-  CompiledScene load_gltf_scene(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder) {
-    CompiledScene result_scene {device};
+  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder) {
+    CompiledScene result_scene {};
 
     Assimp::Importer importer {};
     auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);
-    load_verts(device, transfer_pool, aiscene, result_scene);
-    load_materials(device, transfer_pool, aiscene, folder, result_scene);
+    load_verts(transfer_pool, aiscene, result_scene);
+    load_materials(transfer_pool, aiscene, folder, result_scene);
     load_nodes(aiscene->mRootNode, result_scene.root);
     return result_scene;
   }

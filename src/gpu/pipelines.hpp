@@ -1,7 +1,7 @@
 #ifndef PIPELINES_HPP_INCLUDED
 #define PIPELINES_HPP_INCLUDED
 
-#include "vkerror.hpp"
+#include "driver.hpp"
 
 #include <vector>
 #include <functional>
@@ -21,7 +21,6 @@ namespace gpu {
 
 
   struct RenderSubpassDesc {
-    
     bool operator==(const RenderSubpassDesc &desc) const {
       return formats == desc.formats && use_depth == desc.use_depth;
     }
@@ -261,7 +260,7 @@ namespace gpu {
   };
 
   struct PipelinePool {
-    PipelinePool(VkDevice device);
+    PipelinePool();
     ~PipelinePool();
 
     void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);
@@ -281,14 +280,13 @@ namespace gpu {
       RenderSubpassDesc desc;
       VkRenderPass handle = nullptr;
       bool is_empty() const { return !handle; }
-      void create_renderpass(VkDevice device);
+      void create_renderpass();
     };
 
     struct Pipeline {
       VkPipeline handle = nullptr;
     };
 
-    VkDevice api_device;
     VkPipelineCache vk_cache {nullptr};
 
     std::unordered_map<std::string, uint32_t> programs;

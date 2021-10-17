@@ -1,12 +1,15 @@
 #ifndef SYNC_PRIMIRIVE_HPP_INCLUDED
 #define SYNC_PRIMIRIVE_HPP_INCLUDED
 
-#include "vkerror.hpp"
 #include <algorithm>
+
+#include "driver.hpp"
+#include "resources.hpp"
+
 namespace gpu {
 
   struct Fence {
-    Fence(VkDevice device, bool signaled = false) : base {device} {
+    Fence(bool signaled = false) {
 
       VkFenceCreateInfo info {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -14,29 +17,27 @@ namespace gpu {
         .flags = signaled? VK_FENCE_CREATE_SIGNALED_BIT : 0u
       };
 
-      VKCHECK(vkCreateFence(base, &info, nullptr, &handle));
+      VKCHECK(vkCreateFence(internal::app_vk_device(), &info, nullptr, &handle));
     }
 
     ~Fence() {
-      if (base && handle) { vkDestroyFence(base, handle, nullptr); }
+      if (handle) { vkDestroyFence(internal::app_vk_device(), handle, nullptr); }
     }
 
-    Fence(Fence &&f) : base {f.base}, handle {f.handle} {
+    Fence(Fence &&f) : handle {f.handle} {
       f.handle = nullptr;
     }
 
     const Fence &operator=(Fence &&o) {
-      std::swap(base, o.base);
       std::swap(handle, o.handle);
       return *this;
     }
 
-    void reset() { vkResetFences(base, 1, &handle); }
+    void reset() { vkResetFences(internal::app_vk_device(), 1, &handle); }
     
     operator VkFence() const { return handle; }
 
   private:
-    VkDevice base {nullptr};
     VkFence handle {nullptr};
 
     Fence(const Fence&) = delete;
@@ -44,7 +45,7 @@ namespace gpu {
   };
 
   struct Semaphore {
-    Semaphore(VkDevice device) : base {device} {
+    Semaphore() {
 
       VkSemaphoreCreateInfo info {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -52,19 +53,18 @@ namespace gpu {
         .flags = 0
       };
 
-      VKCHECK(vkCreateSemaphore(base, &info, nullptr, &handle));
+      VKCHECK(vkCreateSemaphore(internal::app_vk_device(), &info, nullptr, &handle));
     }
 
     ~Semaphore() {
-      if (base && handle) { vkDestroySemaphore(base, handle, nullptr); }
+      if (handle) { vkDestroySemaphore(internal::app_vk_device(), handle, nullptr); }
     }
 
-    Semaphore(Semaphore &&f) : base {f.base}, handle {f.handle} {
+    Semaphore(Semaphore &&f) : handle {f.handle} {
       f.handle = nullptr;
     }
 
     const Semaphore &operator=(Semaphore &&o) {
-      std::swap(base, o.base);
       std::swap(handle, o.handle);
       return *this;
     }
@@ -72,7 +72,6 @@ namespace gpu {
     operator VkSemaphore() const { return handle; }
 
   private:
-    VkDevice base {nullptr};
     VkSemaphore handle {nullptr};
 
     Semaphore(const Semaphore&) = delete;

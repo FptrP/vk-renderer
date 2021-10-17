@@ -1,0 +1,39 @@
+cmake_minimum_required(VERSION 3.0)
+
+project(cgtask3)
+
+find_package(SDL2 REQUIRED)
+find_package(Vulkan REQUIRED)
+find_package(assimp REQUIRED)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "-Wall -g -pthread")
+#add_subdirectory(src/drv)
+
+include_directories(.)
+
+set(spv-dir "lib/spirv-cross")
+set(imgui-dir "lib/imgui")
+
+add_subdirectory(gpu)
+
+add_executable(main 
+  rendergraph/resources.cpp
+  rendergraph/rendergraph.cpp
+  rendergraph/gpu_ctx.cpp
+
+  main.cpp
+  backbuffer_subpass2.cpp
+  util_passes.cpp
+  scene_renderer.cpp
+  gpu_transfer.cpp
+  defered_shading.cpp
+  ssao.cpp
+  imgui_pass.cpp
+  downsample_pass.cpp
+  ssr.cpp
+
+  scene/scene.cpp
+  scene/images.cpp)
+
+target_link_libraries(main vk-gpu ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES} assimp)

@@ -7,9 +7,9 @@ namespace gpu {
 
   template <typename T>
   struct DynBuffer {
-    DynBuffer(VmaAllocator alloc, uint64_t alignment, uint32_t elements)
+    DynBuffer(uint64_t alignment, uint32_t elements)
     : elems_count {elements}, block_size {get_block_size(sizeof(T), alignment)},
-      buff {alloc}
+      buff {}
     {
       buff.create(VMA_MEMORY_USAGE_CPU_TO_GPU, elems_count * block_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     }
@@ -77,8 +77,8 @@ namespace gpu {
   };
 
   struct UniformBufferPool {
-    UniformBufferPool(VmaAllocator alloc, uint64_t alignment, uint64_t mem_size)
-      : buffer {alloc}, mem_alignment {alignment}
+    UniformBufferPool(uint64_t alignment, uint64_t mem_size)
+      : buffer {}, mem_alignment {alignment}
     {
       buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, mem_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     }

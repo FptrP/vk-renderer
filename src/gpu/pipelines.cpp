@@ -14,7 +14,7 @@
 
 namespace gpu {
 
-  PipelinePool::PipelinePool(VkDevice device) : api_device {device} {
+  PipelinePool::PipelinePool() {
     VkPipelineCacheCreateInfo info {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
       .pNext = nullptr,
@@ -22,25 +22,25 @@ namespace gpu {
       .initialDataSize = 0,
       .pInitialData = nullptr
     };
-    VKCHECK(vkCreatePipelineCache(api_device, &info, nullptr, &vk_cache));
+    VKCHECK(vkCreatePipelineCache(internal::app_vk_device(), &info, nullptr, &vk_cache));
   }
 
   PipelinePool::~PipelinePool() {
     for (auto &[k, v] : compute_pipelines) {
-      vkDestroyPipeline(api_device, v.handle, nullptr);
+      vkDestroyPipeline(internal::app_vk_device(), v.handle, nullptr);
     }
 
     for (auto &[k, v] : graphics_pipelines) {
-      vkDestroyPipeline(api_device, v.handle, nullptr);
+      vkDestroyPipeline(internal::app_vk_device(), v.handle, nullptr);
     }
 
     if (vk_cache) {
-      vkDestroyPipelineCache(api_device, vk_cache, nullptr);
+      vkDestroyPipelineCache(internal::app_vk_device(), vk_cache, nullptr);
     }
 
     for (auto &subpass : allocated_subpasses) {
       if (!subpass.is_empty()) {
-        vkDestroyRenderPass(api_device, subpass.handle, nullptr);
+        vkDestroyRenderPass(internal::app_vk_device(), subpass.handle, nullptr);
       } 
     }
     
@@ -50,12 +50,12 @@ namespace gpu {
   }
 
   void PipelinePool::destroy_program(PipelinePool::ShaderProgram &prog) {
-    vkDestroyPipelineLayout(api_device, prog.pipeline_layout, nullptr);
+    vkDestroyPipelineLayout(internal::app_vk_device(), prog.pipeline_layout, nullptr);
     for (auto &pair : prog.dsl) {
-      vkDestroyDescriptorSetLayout(api_device, pair.second, nullptr);
+      vkDestroyDescriptorSetLayout(internal::app_vk_device(), pair.second, nullptr);
     }
     for (auto mod : prog.modules) {
-      vkDestroyShaderModule(api_device, mod, nullptr);
+      vkDestroyShaderModule(internal::app_vk_device(), mod, nullptr);
     }
   }
 
@@ -221,11 +221,11 @@ namespace gpu {
     
     for (const auto &binding : bindings) {
       try {
-        modules.push_back(load_module(api_device, binding, layout_builder, push_const));
+        modules.push_back(load_module(internal::app_vk_device(), binding, layout_builder, push_const));
       }
       catch(...) {
         for (auto mod : modules) {
-          vkDestroyShaderModule(api_device, mod, nullptr);
+          vkDestroyShaderModule(internal::app_vk_device(), mod, nullptr);
         }
         throw;
       }
@@ -248,7 +248,7 @@ namespace gpu {
         .pBindings = api_bindings.data()
       };
 
-      VKCHECK(vkCreateDescriptorSetLayout(api_device, &info, nullptr, &api_layouts[set_id]));
+      VKCHECK(vkCreateDescriptorSetLayout(internal::app_vk_device(), &info, nullptr, &api_layouts[set_id]));
       vec_layouts.push_back(api_layouts[set_id]);
     }
 
@@ -268,7 +268,7 @@ namespace gpu {
     }
 
     VkPipelineLayout pipeline_layout;
-    VKCHECK(vkCreatePipelineLayout(api_device, &info, nullptr, &pipeline_layout));
+    VKCHECK(vkCreatePipelineLayout(internal::app_vk_device(), &info, nullptr, &pipeline_layout));
     
     auto index = allocated_programs.size();
 
@@ -292,7 +292,7 @@ namespace gpu {
     return render_subpasses[desc];
   }
   
-  void PipelinePool::RenderSubpass::create_renderpass(VkDevice device) {
+  void PipelinePool::RenderSubpass::create_renderpass() {
     std::vector<VkAttachmentDescription> attachments;
     
     VkAttachmentDescription attach_desc {
@@ -341,13 +341,13 @@ namespace gpu {
     info.subpassCount = 1;
     info.pSubpasses = &subpass;
     
-    VKCHECK(vkCreateRenderPass(device, &info, nullptr, &handle));
+    VKCHECK(vkCreateRenderPass(internal::app_vk_device(), &info, nullptr, &handle));
   }
 
   VkRenderPass PipelinePool::get_subpass(uint32_t subpass_index) {
     auto &subpass = allocated_subpasses.at(subpass_index);
     if (subpass.is_empty()) {
-      subpass.create_renderpass(api_device);
+      subpass.create_renderpass();
     }
     return subpass.handle;
   }
@@ -453,7 +453,7 @@ namespace gpu {
       .basePipelineIndex = 0
     };
 
-    VKCHECK(vkCreateComputePipelines(api_device, vk_cache, 1, &info, nullptr, &res.handle));
+    VKCHECK(vkCreateComputePipelines(internal::app_vk_device(), vk_cache, 1, &info, nullptr, &res.handle));
     return res.handle;
   }
 
@@ -577,7 +577,7 @@ namespace gpu {
     info.subpass = 0;
     info.layout = prog.pipeline_layout;
 
-    VKCHECK(vkCreateGraphicsPipelines(api_device, vk_cache, 1, &info, nullptr, &res.handle));
+    VKCHECK(vkCreateGraphicsPipelines(internal::app_vk_device(), vk_cache, 1, &info, nullptr, &res.handle));
 
     return res.handle;
   }

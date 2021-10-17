@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "vkerror.hpp"
+#include "driver.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -17,29 +17,30 @@ namespace gpu {
   struct CmdContext;
 
   struct CmdBufferPool {
-    CmdBufferPool(VkDevice logical_device, uint32_t queue_family)
-      : device {logical_device}
+    CmdBufferPool()
     {
+      auto device = internal::app_vk_device();
+      auto qinfo = app_main_queue();
+
       VkCommandPoolCreateInfo info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .pNext = nullptr,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family
+        .queueFamilyIndex = qinfo.family
       };
 
-      VKCHECK(vkCreateCommandPool(logical_device, &info, nullptr, &pool));
+      VKCHECK(vkCreateCommandPool(device, &info, nullptr, &pool));
     }
     
     ~CmdBufferPool() {
-      if (device && pool) {
-        vkDestroyCommandPool(device, pool, nullptr);
+      if (pool) {
+        vkDestroyCommandPool(internal::app_vk_device(), pool, nullptr);
       }
     }
 
-    CmdBufferPool(CmdBufferPool &&o) : device {o.device}, pool {o.pool} { o.pool = nullptr; }
+    CmdBufferPool(CmdBufferPool &&o) : pool {o.pool} { o.pool = nullptr; }
     
     const CmdBufferPool &operator=(CmdBufferPool &&o) {
-      std::swap(device, o.device);
       std::swap(pool, o.pool);
       return *this;
     }
@@ -55,7 +56,7 @@ namespace gpu {
 
       std::vector<VkCommandBuffer> result;
       result.resize(count);
-      VKCHECK(vkAllocateCommandBuffers(device, &info, result.data()));
+      VKCHECK(vkAllocateCommandBuffers(internal::app_vk_device(), &info, result.data()));
       return result;
     }
 
@@ -69,12 +70,11 @@ namespace gpu {
       };
 
       VkCommandBuffer result;
-      VKCHECK(vkAllocateCommandBuffers(device, &info, &result));
+      VKCHECK(vkAllocateCommandBuffers(internal::app_vk_device(), &info, &result));
       return result;
     }
 
   private:
-    VkDevice device;
     VkCommandPool pool {VK_NULL_HANDLE};
 
     CmdBufferPool(const CmdBufferPool&) = delete;
@@ -108,7 +108,7 @@ namespace gpu {
 
   struct CmdContext {
     CmdContext(VkDevice device, VkCommandBuffer cmd_buf, VmaAllocator alloc, uint64_t alignment)
-      : api_device {device}, cmd {cmd_buf}, ubo_pool {alloc, alignment, UBO_POOL_SIZE} {}
+      : api_device {device}, cmd {cmd_buf}, ubo_pool {alignment, UBO_POOL_SIZE} {}
     ~CmdContext() { clear_resources(); }
     
     void begin();
@@ -186,7 +186,7 @@ namespace gpu {
   };
 
   struct TransferCmdPool {
-    TransferCmdPool(VkDevice device, uint32_t queue_family, VkQueue queue);
+    TransferCmdPool();
     TransferCmdPool(TransferCmdPool &&pool);
     ~TransferCmdPool();
 
@@ -196,8 +196,6 @@ namespace gpu {
     const TransferCmdPool &operator=(TransferCmdPool &&pool);
 
   private:
-    VkDevice api_device {nullptr};
-    VkQueue api_queue {nullptr};
     VkCommandPool pool {nullptr};
     VkCommandBuffer cmd {nullptr};
     VkFence fence {nullptr};

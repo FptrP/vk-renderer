@@ -251,137 +251,53 @@ namespace gpu {
     return *this;
   }
 
-  Swapchain Device::create_swapchain(VkSurfaceKHR surface, VkExtent2D window_extent, VkImageUsageFlags usage) {
-    return {logical_device, physical_device, surface, window_extent, usage};
-  }
-  
-  std::vector<Image> Device::get_swapchain_images(const Swapchain &swapchain) {
-    uint32_t images_count = 0;
-    VKCHECK(vkGetSwapchainImagesKHR(logical_device, swapchain.api_swapchain(), &images_count, nullptr));
-    std::vector<VkImage> api_images;
-    api_images.resize(images_count);
-    VKCHECK(vkGetSwapchainImagesKHR(logical_device, swapchain.api_swapchain(), &images_count, api_images.data()));
+  static std::optional<Instance> g_instance;
+  static std::optional<DebugMessenger> g_messenger;
+  static std::optional<Surface> g_surface;
+  static std::optional<Device> g_device;
 
-    std::vector<Image> images;
-    images.reserve(images_count);
-    for (auto handle : api_images) {
-      images.emplace_back(logical_device, allocator);
-      images.back().create_reference(handle, swapchain.get_image_info());
-    }
+  void create_context(const InstanceConfig &icfg, PFN_vkDebugUtilsMessengerCallbackEXT callback, DeviceConfig dcfg, SurfaceCreateCB &&surface_cb) {
+    g_instance.emplace(Instance {icfg});
 
-    return images;
-  }
-
-  std::vector<CmdContext> Device::allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count) {
-    auto api_buffers = pool.allocate(count);
-    std::vector<CmdContext> cmd;
-    cmd.reserve(count);
-    for (auto elem : api_buffers) {
-      cmd.emplace_back(logical_device, elem, allocator, properties.limits.minUniformBufferOffsetAlignment);
+    if (callback) {
+      g_messenger.emplace(g_instance->create_debug_messenger(callback));
     }
     
-    return cmd;
-  }
-
-  struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> present_modes;
-  };
-
-  static SwapChainSupportDetails query_swapchain_info(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-
-    if (formatCount != 0) {
-      details.formats.resize(formatCount);
-      vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+    if (surface_cb) {
+      auto api_surface = surface_cb(g_instance->api_instance());
+      g_surface.emplace(Surface {g_instance->api_instance(), api_surface});
+      dcfg.surface = g_surface->api_surface();
     }
-
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-
-    if (presentModeCount != 0) {
-      details.present_modes.resize(presentModeCount);
-      vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.present_modes.data());
-    }
-
-    return details;
-  }
-
-  Swapchain::Swapchain(VkDevice device, VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkExtent2D window, VkImageUsageFlags image_usage)
-    : base {device}
-  {
-    auto details = query_swapchain_info(physical_device, surface);
-
-    VkSurfaceFormatKHR fmt = details.formats.at(0);
-    for (auto sfmt : details.formats) {
-      if (sfmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && sfmt.format == VK_FORMAT_B8G8R8A8_SRGB) {
-        fmt = sfmt;
-        break;
-      }
-    }
-
-    VkPresentModeKHR mode = details.present_modes.at(0);
-
-    for (auto m : details.present_modes) {
-      if (m == VK_PRESENT_MODE_MAILBOX_KHR) {
-        mode = m;
-      }
-    }
-
-    auto swapchain_extent = details.capabilities.currentExtent;
-
-    if (swapchain_extent.width == UINT32_MAX) {
-      swapchain_extent = window;
-      swapchain_extent.width = std::clamp(swapchain_extent.width, details.capabilities.minImageExtent.width, details.capabilities.maxImageExtent.width);
-      swapchain_extent.height = std::clamp(swapchain_extent.height, details.capabilities.minImageExtent.height, details.capabilities.maxImageExtent.height);
-    }
-
-    uint32_t image_count = details.capabilities.minImageCount + 1;
-    if (details.capabilities.maxImageCount > 0 && image_count > details.capabilities.maxImageCount) {
-      image_count = details.capabilities.maxImageCount;
-    }
-
-    VkSwapchainCreateInfoKHR info {
-      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-      .pNext = nullptr,
-      .flags = 0,
-      .surface = surface,
-      .minImageCount = image_count,
-      .imageFormat = fmt.format,
-      .imageColorSpace = fmt.colorSpace,
-      .imageExtent = swapchain_extent,
-      .imageArrayLayers = 1,
-      .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 0,
-      .pQueueFamilyIndices = nullptr,
-      .preTransform = details.capabilities.currentTransform,
-      .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-      .presentMode = mode,
-      .clipped = VK_TRUE,
-      .oldSwapchain = nullptr
-    };
-
-    VKCHECK(vkCreateSwapchainKHR(device, &info, nullptr, &handle));
     
-    descriptor = ImageInfo {
-      fmt.format,
-      VK_IMAGE_ASPECT_COLOR_BIT,
-      swapchain_extent.width,
-      swapchain_extent.height,
-    };
+    g_device.emplace(Device {g_instance->api_instance(), dcfg});
   }
   
-  Swapchain::~Swapchain() {
-    if (base && handle) {
-      vkDestroySwapchainKHR(base, handle, nullptr);
-    }
+  void close_context() {
+    g_device.reset();
+    g_surface.reset();
+    g_messenger.reset();
+    g_instance.reset();
   }
 
+  Instance &app_instance() {
+    return g_instance.value();
+  }
+
+  Device &app_device() {
+    return g_device.value();
+  }
+
+  Surface &app_surface() {
+    return g_surface.value();
+  }
+
+  VkDevice internal::app_vk_device() {
+    return g_device.value().api_device();
+  }
+
+  QueueInfo app_main_queue() {
+    auto &dev = app_device();
+    return QueueInfo {dev.api_queue(), dev.get_queue_family()};
+  }
+  
 }

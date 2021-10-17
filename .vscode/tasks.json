@@ -8,7 +8,7 @@
       "type": "shell",
       "command": "make -j 8",
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}/build"
       }
     },
     {
@@ -23,6 +23,14 @@
       "label": "Run renderdoc",
       "type": "shell",
       "command": "runrd.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Run project",
+      "type": "shell",
+      "command": "./build/main",
       "options": {
         "cwd": "${workspaceFolder}"
       }

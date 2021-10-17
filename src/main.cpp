@@ -39,16 +39,15 @@ struct AppInit {
     SDL_Vulkan_GetInstanceExtensions(window, &count, ext.data());
 
     gpu::InstanceConfig instance_info {};
+    instance_info.api_version = VK_API_VERSION_1_2;
     instance_info.layers = {"VK_LAYER_KHRONOS_validation"};
     instance_info.extensions.insert(ext.begin(), ext.end());
     instance_info.extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
-    gpu::init_instance(instance_info, debug_cb);
-
     gpu::DeviceConfig device_info {};
     device_info.extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    gpu::init_device(device_info, {width, height}, [&](VkInstance instance){
+    gpu::init_all(instance_info, debug_cb, device_info, {width, height}, [&](VkInstance instance){
       VkSurfaceKHR surface;
       SDL_Vulkan_CreateSurface(window, instance, &surface);
       return surface;
@@ -117,8 +116,8 @@ int main() {
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
 
-  auto transfer_pool = gpu::app_device().new_transfer_pool();
-  auto scene = scene::load_gltf_scene(gpu::app_device(), transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
+  gpu::TransferCmdPool transfer_pool {};
+  auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
 
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   auto ssao_texture = create_ssao_texture(render_graph, WIDTH, HEIGHT); 

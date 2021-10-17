@@ -6,4 +6,4 @@ case $1 in
     exit;;
 esac
 
-renderdoccmd capture --opt-api-validation -c captures/debug ./main
+renderdoccmd capture --opt-api-validation -c captures/debug ./build/main

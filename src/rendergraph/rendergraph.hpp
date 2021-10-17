@@ -35,7 +35,6 @@ namespace rendergraph {
 
     const gpu::ImageInfo &get_image_info(ImageResourceId id);
 
-    gpu::Device &get_gpu() { return gpu.get_device(); }
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}
 
@@ -59,7 +58,6 @@ namespace rendergraph {
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
     VkDescriptorSet allocate_set(const gpu::GraphicsPipeline &p, uint32_t index) { return gpu.allocate_set(p.get_layout(index)); }
-    gpu::Device &get_gpu() const { return gpu.get_device(); }
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}

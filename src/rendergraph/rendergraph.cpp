@@ -155,8 +155,8 @@ namespace rendergraph {
   }
   
   RenderGraph::RenderGraph(gpu::Device &device, gpu::Swapchain &swapchain)
-    : gpu {device, swapchain},
-      resources {device.get_allocator(), device.api_device()}
+    : gpu {},
+      resources {}
   {
     auto vk_backbuffers = gpu.take_backbuffers();
     backbuffers.reserve(vk_backbuffers.size());
@@ -173,7 +173,7 @@ namespace rendergraph {
   }
 
   RenderGraph::~RenderGraph() {
-    vkDeviceWaitIdle(gpu.get_device().api_device());
+    vkDeviceWaitIdle(gpu::app_device().api_device());
   }
 
   void RenderGraph::submit() {

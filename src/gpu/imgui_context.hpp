@@ -13,7 +13,7 @@ namespace gpu {
 
 struct ImguiContext {
   ImguiContext(SDL_Window *sdl_window, const gpu::Instance &instance, const gpu::Device &device, uint32_t image_count, VkRenderPass renderpass)
-    : window {sdl_window}, pool {device.api_device(), 1}
+    : window {sdl_window}, pool {1}
   {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

@@ -2,32 +2,34 @@
 #define GPU_HPP_INCLUDED
 
 #include "driver.hpp"
+#include "swapchain.hpp"
+#include "shader.hpp"
+#include "cmd_buffers.hpp"
+#include "sync_primitive.hpp"
+#include "dynbuffer.hpp"
+#include "samplers.hpp"
+#include "descriptors.hpp"
+#include "resources.hpp"
 
 #include <functional>
 
 namespace gpu {
 
-  using SurfaceCreateCB = std::function<VkSurfaceKHR(VkInstance)>;
-
-  void init_instance(const InstanceConfig &cfg, PFN_vkDebugUtilsMessengerCallbackEXT callback = nullptr);
-  void init_device(DeviceConfig cfg, VkExtent2D window_size, SurfaceCreateCB &&surface_cb);
+  void init_all(const InstanceConfig &icfg, PFN_vkDebugUtilsMessengerCallbackEXT callback, DeviceConfig dcfg, VkExtent2D window_size, SurfaceCreateCB &&surface_cb);
   void close();
 
-  Instance &app_instance();
-  Device &app_device();
   Swapchain &app_swapchain();
   PipelinePool &app_pipelines();
 
   GraphicsPipeline create_graphics_pipeline();
   ComputePipeline create_compute_pipeline();
 
-  Image create_image();
-  Buffer create_buffer();
   VkSampler create_sampler(const VkSamplerCreateInfo &info);
 
   template<typename T>
   DynBuffer<T> create_dynbuffer(uint32_t elems_count) {
-    return app_device().create_dynbuffer<T>(elems_count);
+    auto &dev = app_device();
+    return DynBuffer<T>{dev.get_allocator(), dev.get_properties().limits.minUniformBufferOffsetAlignment, elems_count};
   }
 
   template <typename... Bindings> 
@@ -36,6 +38,11 @@ namespace gpu {
   }
 
   void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);
+
+  std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
+  
+  std::vector<Image> get_swapchain_images();
+  uint32_t get_swapchain_image_count();
 }
 
 #endif

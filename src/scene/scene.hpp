@@ -13,8 +13,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/pbrmaterial.h>
 
-#include "gpu/driver.hpp"
-#include "gpu/pipelines.hpp"
+#include "gpu/gpu.hpp"
 
 namespace scene {
   constexpr uint32_t INVALID_TEXTURE = UINT32_MAX;
@@ -44,7 +43,7 @@ namespace scene {
   };
 
   struct CompiledScene {
-    CompiledScene(gpu::Device &device) : vertex_buffer {device.new_buffer()}, index_buffer {device.new_buffer()} {}
+    CompiledScene() {}
 
     CompiledScene(CompiledScene &&) = default;
     CompiledScene &operator=(CompiledScene &&) = default;
@@ -63,8 +62,8 @@ namespace scene {
   gpu::VertexInput get_vertex_input();
   gpu::VertexInput get_vertex_input_shadow();
 
-  CompiledScene load_gltf_scene(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder);
-  gpu::Image load_image_rgba8(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const char *path);
+  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder);
+  gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path);
 }
 
 #endif

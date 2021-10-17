@@ -19,7 +19,7 @@ namespace scene {
   static void copy_pixels(VkCommandBuffer cmd, gpu::Image &dst, gpu::Buffer &transfer);
   static void gen_image_mips(VkCommandBuffer cmd, gpu::Image &dst);
 
-  gpu::Image load_image_rgba8(gpu::Device &device, gpu::TransferCmdPool &transfer_pool, const char *path) {
+  gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path) {
     int x, y, comps;
 
     std::unique_ptr<stbi_uc, PixelsDeleter> pixels;
@@ -32,10 +32,10 @@ namespace scene {
     uint32_t mips = std::floor(std::log2(std::max(x, y))) + 1;
     auto flags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
     gpu::ImageInfo image_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, uint32_t(x), uint32_t(y), 1, mips, 1};
-    gpu::Image output_image {device.new_image()};
+    gpu::Image output_image {};
     output_image.create(VK_IMAGE_TYPE_2D, image_info, VK_IMAGE_TILING_OPTIMAL, flags);
 
-    gpu::Buffer transfer_buffer {device.new_buffer()};
+    gpu::Buffer transfer_buffer {};
     uint64_t buff_size = x * y * 4;
     transfer_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, buff_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
     std::memcpy(transfer_buffer.get_mapped_ptr(), pixels.get(), buff_size);

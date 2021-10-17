@@ -1,7 +1,8 @@
 #ifndef RESOURCES_HPP_INCLUDED
 #define RESOURCES_HPP_INCLUDED
 
-#include "vkerror.hpp"
+#include "common.hpp"
+#include "driver.hpp"
 #include <lib/vk_mem_alloc.h>
 
 #include <algorithm>
@@ -56,7 +57,7 @@ namespace std {
 namespace gpu {
 
   struct Buffer {
-    Buffer(VmaAllocator alloc) : base {alloc} {}
+    Buffer() {}
     ~Buffer() { close(); }
     
     void create(VmaMemoryUsage memory, uint64_t buffer_size, VkBufferUsageFlags usage);
@@ -74,14 +75,13 @@ namespace gpu {
     const Buffer &operator=(const Buffer&) = delete;
   
     Buffer(Buffer &&o)
-      : base {o.base}, handle {o.handle}, 
+      : handle {o.handle}, 
         allocation {o.allocation}, size {o.size}, coherent {o.coherent}, mapped_ptr {o.mapped_ptr} 
     {
       o.handle = nullptr;
     }
 
     Buffer &operator=(Buffer &&o) {
-      std::swap(base, o.base);
       std::swap(handle, o.handle);
       std::swap(allocation, o.allocation);
       std::swap(size, o.size);
@@ -91,7 +91,6 @@ namespace gpu {
     }
 
   private:
-    VmaAllocator base {nullptr}; 
     VkBuffer handle {nullptr};
     VmaAllocation allocation {nullptr};
     uint64_t size {0};
@@ -121,7 +120,7 @@ namespace gpu {
   };
 
   struct Image {
-    Image(VkDevice dev, VmaAllocator alloc) : device {dev}, allocator {alloc} {}
+    Image() {}
     ~Image() { close(); }
 
     void create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
@@ -138,7 +137,7 @@ namespace gpu {
     const ImageInfo &get_info() const { return descriptor; }
 
     Image(Image &&o) 
-      : device {o.device}, allocator {o.allocator}, handle {o.handle},
+      : handle {o.handle},
         allocation {o.allocation}, descriptor{o.descriptor}, views{std::move(o.views)}
     {
       o.handle = nullptr;
@@ -146,8 +145,6 @@ namespace gpu {
     }
 
     Image &operator=(Image&& i) {
-      std::swap(device, i.device);
-      std::swap(allocator, i.allocator);
       std::swap(handle, i.handle);
       std::swap(allocation, i.allocation);
       std::swap(descriptor, i.descriptor);
@@ -156,8 +153,6 @@ namespace gpu {
     }
 
   private:
-    VkDevice device {nullptr};
-    VmaAllocator allocator {nullptr};
     VkImage handle {nullptr};
     VmaAllocation allocation {nullptr};
     ImageInfo descriptor {};
