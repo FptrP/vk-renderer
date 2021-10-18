@@ -29,6 +29,7 @@ add_executable(main
   gpu_transfer.cpp
   defered_shading.cpp
   ssao.cpp
+  gtao.cpp
   imgui_pass.cpp
   downsample_pass.cpp
   ssr.cpp

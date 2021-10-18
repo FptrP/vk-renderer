@@ -6,7 +6,7 @@
 #include <iostream>
 
 rendergraph::ImageResourceId create_ssao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
-  gpu::ImageInfo info {VK_FORMAT_R8_SNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+  gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 }
 

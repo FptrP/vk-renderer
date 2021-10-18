@@ -26,7 +26,7 @@ layout (set = 0, binding = 6) uniform sampler2D SSAO_tex;
 
 const vec3 LIGHT_POS = vec3(0, 2, -1);
 
-#define HORIZON_SHADOWS 0
+#define HORIZON_SHADOWS 1
 #define HIERARCHICAL_SHADOWS 1 
 
 void main() {
@@ -117,8 +117,7 @@ void main() {
 
   color += albedo.rgb * clamp(shade + 0, 0.f, 1.f);
   float ao = texture(SSAO_tex, screen_uv).r;
-  ao *= ao;
-  //color *= clamp(2 * ao, 0.f, 1.f);
+  color *= clamp(ao, 0.f, 1.f);
 
   out_color = vec4(color, 0);
 }

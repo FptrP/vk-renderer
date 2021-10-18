@@ -16,6 +16,7 @@
 #include "ssao.hpp"
 #include "downsample_pass.hpp"
 #include "ssr.hpp"
+#include "gtao.hpp"
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -102,6 +103,11 @@ int main() {
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssao/shader_frag.spv", "main"}
   });
 
+  gpu::create_program("gtao_main", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gtao/main_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gtao/main_frag.spv", "main"}
+  });
+
   gpu::create_program("downsample_depth", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/depth_downsample/shader_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/depth_downsample/shader_frag.spv", "main"}
@@ -111,6 +117,8 @@ int main() {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/ssr/shader_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssr/shader_frag.spv", "main"}
   });
+
+
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
@@ -172,15 +180,19 @@ int main() {
     scene_renderer.draw(render_graph, gbuffer);
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     downsample_depth(render_graph, gbuffer.depth);
-    ssao_pass.draw(render_graph, gbuffer.depth, ssao_texture, SSAOInParams {projection, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f});
+    
+    auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
+
+    //ssao_pass.draw(render_graph, gbuffer.depth, ssao_texture, SSAOInParams {projection, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f});
+    add_gtao_main_pass(render_graph, GTAOParams {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f}, gbuffer.depth, gbuffer.normal, ssao_texture);
     
     add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, ssr_texture, SSRParams {
-      glm::transpose(glm::inverse(camera.get_view_mat())),
+      normal_mat,
       glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
     });
 
-    shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
-    //add_backbuffer_subpass(render_graph, ssr_texture, sampler);
+    //shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
+    add_backbuffer_subpass(render_graph, ssao_texture, sampler);
     add_present_subpass(render_graph);
     render_graph.submit();  
   }
