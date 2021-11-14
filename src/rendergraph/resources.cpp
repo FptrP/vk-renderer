@@ -115,7 +115,7 @@ namespace rendergraph {
     return img.states[id.layer * mip_count + id.mip];
   }
 
-  static bool is_ro_access(VkAccessFlags flags) {
+  static inline bool is_ro_access(VkAccessFlags flags) {
     const auto read_msk =
       VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|
       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT|
@@ -131,12 +131,23 @@ namespace rendergraph {
     return (flags & read_msk);
   }
 
+  static inline bool is_write_access(VkAccessFlags flags) {
+    const auto write_msk = 
+      VK_ACCESS_SHADER_WRITE_BIT|
+      VK_ACCESS_TRANSFER_WRITE_BIT|
+      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|
+      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT|
+      VK_ACCESS_MEMORY_WRITE_BIT;
+
+    return (flags & write_msk);
+  }
+
   static bool merge_states(ImageTrackingState &state, const ImageSubresourceState &access) {
     if (state.dst.layout != access.layout) {
       return false;
     }
 
-    if (is_ro_access(state.dst.access) && is_ro_access(access.access)) {
+    if (!is_write_access(state.dst.access) && !is_write_access(access.access)) {
       state.dst.stages |= access.stages;
       state.dst.access |= access.access;
       return true;
@@ -238,7 +249,7 @@ namespace rendergraph {
       return;
     }
 
-    if (is_ro_access(track.dst.access) && is_ro_access(state.access)) {
+    if (!is_write_access(track.dst.access) && !is_write_access(state.access)) {
       track.dst.access |= state.access;
       track.dst.stages |= state.stages;
       track.last_access = index;

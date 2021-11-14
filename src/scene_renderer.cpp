@@ -29,6 +29,7 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
   normal = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
   material = graph.create_image(VK_IMAGE_TYPE_2D, mat_info, tiling, color_usage);
   depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage);
+  prev_depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 }
 
 struct GbufConst {

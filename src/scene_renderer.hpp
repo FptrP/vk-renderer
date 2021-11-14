@@ -15,6 +15,7 @@ struct Gbuffer {
   rendergraph::ImageResourceId normal;
   rendergraph::ImageResourceId material;
   rendergraph::ImageResourceId depth;
+  rendergraph::ImageResourceId prev_depth;
 
   uint32_t w, h;
 };

@@ -88,3 +88,33 @@ void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
   }
 
 }
+
+void clear_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, float val) {
+  struct Data {};
+
+  auto info = graph.get_descriptor(image);
+
+  graph.add_task<Data>("Clear_depth",
+    [&](Data &, rendergraph::RenderGraphBuilder &builder){
+      builder.transfer_write(image, 0, info.mip_levels, 0, info.array_layers);
+    },
+    [=](Data &, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      VkClearDepthStencilValue clear_val {.depth = val};
+      VkImageSubresourceRange range {
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        0,
+        info.mip_levels,
+        0,
+        info.array_layers
+      };
+
+      vkCmdClearDepthStencilImage(
+        cmd.get_command_buffer(),
+        resources.get_image(image).get_image(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &clear_val,
+        1,
+        &range
+      );
+    });
+}

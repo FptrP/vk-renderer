@@ -12,7 +12,7 @@ struct SubpassData {
 static gpu::GraphicsPipeline pipeline;
 struct Nil {};
 
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler) {
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler, DrawTex flags) {
   
   pipeline = gpu::create_graphics_pipeline();
   pipeline.set_program("texdraw");
@@ -42,6 +42,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});
+      cmd.push_constants_graphics(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(flags), &flags);
       cmd.bind_viewport(viewport);
       cmd.bind_scissors(scissors);
       cmd.draw(3, 1, 0, 0);
@@ -50,7 +51,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
     });
 }
 
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler) {
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler, DrawTex flags) {
   pipeline = gpu::create_graphics_pipeline();
   pipeline.set_program("texdraw");
   pipeline.set_registers({});
@@ -81,6 +82,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});
+      cmd.push_constants_graphics(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(flags), &flags);
       cmd.bind_viewport(viewport);
       cmd.bind_scissors(scissors);
       cmd.draw(3, 1, 0, 0);

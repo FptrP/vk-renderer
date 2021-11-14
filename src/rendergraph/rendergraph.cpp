@@ -19,6 +19,10 @@ namespace rendergraph {
     if (stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
       pipeline_stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
+    if (stages & VK_SHADER_STAGE_COMPUTE_BIT) {
+      pipeline_stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    }
+
     return pipeline_stages;
   }
 
@@ -45,6 +49,19 @@ namespace rendergraph {
     return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT, mip, 1, layer, 1}};
   }
   
+  ImageViewId RenderGraphBuilder::use_storage_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t mip, uint32_t layer) {
+    auto pipeline_stages = get_pipeline_flags(stages);
+    ImageSubresourceId subres {id, mip, layer};
+    ImageSubresourceState state {
+      pipeline_stages,
+      VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT,
+      VK_IMAGE_LAYOUT_GENERAL
+    };
+    
+    tracking_state.add_input(resources, subres, state);
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
+  }
+
   ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect) {
     const auto &desc = resources.get_info(id);
     return sample_image(id, stages, aspect, 0, desc.mip_levels, 0, desc.array_layers);
@@ -268,6 +285,10 @@ namespace rendergraph {
 
   const gpu::ImageInfo &RenderGraph::get_descriptor(ImageResourceId id) const {
     return resources.get_info(id);
+  }
+
+  void RenderGraph::remap(ImageResourceId src, ImageResourceId dst) {
+    resources.remap(src, dst);
   }
 
   void RenderGraph::write_barrier(const Barrier &barrier, VkCommandBuffer cmd) {

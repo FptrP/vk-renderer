@@ -5,5 +5,6 @@
 
 void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, uint32_t mip, uint32_t layer);
 void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image);
+void clear_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, float val = 1.0);
 
 #endif

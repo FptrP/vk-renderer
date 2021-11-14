@@ -22,7 +22,7 @@
     {
       "label": "Run renderdoc",
       "type": "shell",
-      "command": "runrd.sh",
+      "command": "./runrd.sh",
       "options": {
         "cwd": "${workspaceFolder}"
       }

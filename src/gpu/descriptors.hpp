@@ -122,6 +122,20 @@ namespace gpu {
     VkDescriptorImageInfo info {};
   };
 
+  struct StorageTextureBinding : BaseBinding {
+    StorageTextureBinding(uint32_t binding, VkImageView view)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}
+    {
+      info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+      info.sampler = nullptr;
+      info.imageView = view;
+      desc_write.pImageInfo = &info;
+    }
+
+  private:
+    VkDescriptorImageInfo info {};
+  };
+
   struct ArrayOfImagesBinding : BaseBinding {
     ArrayOfImagesBinding(uint32_t binding, const std::vector<VkImageView> &src)
       : BaseBinding {binding, 0, (uint32_t)src.size(), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE}

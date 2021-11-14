@@ -1,12 +1,7 @@
 #version 460
 #include <gbuffer_encode.glsl>
 
-layout (location = 0) in vec2 screen_uv;
-layout (location = 0) out float occlusion;
-
-layout (set = 0, binding = 0) uniform sampler2D depth;
-
-layout (set = 0, binding = 1) uniform GTAOParams {
+layout (set = 0, binding = 0) uniform GTAOParams {
   mat4 normal_mat;
   float fovy;
   float aspect;
@@ -14,7 +9,9 @@ layout (set = 0, binding = 1) uniform GTAOParams {
   float zfar;
 };
 
+layout (set = 0, binding = 1) uniform sampler2D depth;
 layout (set = 0, binding = 2) uniform sampler2D gbuffer_normal;
+layout (set = 0, binding = 3, r8) uniform writeonly image2D out_gtao;
 
 #define DIR_COUNT 8
 #define RADIUS 0.01
@@ -41,10 +38,17 @@ const vec2 DIRECTIONS[DIR_COUNT] = vec2[DIR_COUNT](
 
 vec3 find_horizon_w0(in sampler2D depth, vec3 screen_start, vec2 dir, vec3 camera_pos, vec3 w0);
 
+layout (local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
+
 void main() {
+  uvec2 texSize = gl_NumWorkGroups.xy * gl_WorkGroupSize.xy;
+  uvec2 pixelPos = gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy;
+
+  vec2 screen_uv = vec2(pixelPos)/vec2(texSize);
+
   float frag_depth = texture(depth, screen_uv).r;
   if (frag_depth >= 1.f) {
-    occlusion = 1.f;
+    imageStore(out_gtao, ivec2(pixelPos), vec4(1, 0, 0, 0));
     return;
   }
   
@@ -60,9 +64,10 @@ void main() {
 
   float sum = 0.f;
   const int USED_DIRS = DIR_COUNT;
-  vec2 dir_radius = min(100.0/length(view_vec), 32.0) / vec2(textureSize(depth, 0));
 
-  for (int dir_index = 0; dir_index < USED_DIRS; dir_index++) {    
+  vec2 dir_radius = min(100.0/length(view_vec), 32.0) / vec2(texSize);
+
+  for (int dir_index = 0; dir_index < USED_DIRS; dir_index++) {
     vec2 dir = dir_radius * DIRECTIONS[dir_index];
     vec3 end_pos = vec3(screen_uv, frag_depth) + vec3(DIRECTIONS[dir_index], 0);
     vec3 camera_end_pos = reconstruct_view_vec(end_pos.xy, end_pos.z, fovy, aspect, znear, zfar); 
@@ -97,8 +102,8 @@ void main() {
   #endif
   }
 
-  sum = sum / (USED_DIRS);
-  occlusion = sum;
+  sum = sum/USED_DIRS;
+  imageStore(out_gtao, ivec2(pixelPos), vec4(sum, 0, 0, 0));
 }
 
 vec3 find_horizon_w0(in sampler2D depth, vec3 screen_start, vec2 dir, vec3 camera_pos, vec3 w0) {
