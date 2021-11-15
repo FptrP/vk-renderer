@@ -16,6 +16,10 @@ layout (set = 0, binding = 1) uniform GTAOParams {
 
 layout (set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 
+layout (push_constant) uniform PushConstants {
+  float angle_offset;
+};
+
 #define DIR_COUNT 8
 #define RADIUS 0.01
 #define SAMPLES 20
@@ -28,17 +32,7 @@ layout (set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 
 #define PI 3.1415926535897932384626433832795
 
-const vec2 DIRECTIONS[DIR_COUNT] = vec2[DIR_COUNT](
-  normalize(vec2(1, 0)),
-  normalize(vec2(1, -1)),
-  normalize(vec2(0, -1)),
-  normalize(vec2(-1, -1)),
-  normalize(vec2(-1, 0)),
-  normalize(vec2(-1, 1)),
-  normalize(vec2(0, 1)),
-  normalize(vec2(1, 1))
-);
-
+float gtao_direction(in ivec2 pos);
 vec3 find_horizon_w0(in sampler2D depth, vec3 screen_start, vec2 dir, vec3 camera_pos, vec3 w0);
 
 void main() {
@@ -55,16 +49,19 @@ void main() {
 
   vec3 world_normal = decode_normal(texture(gbuffer_normal, screen_uv).xy);
   vec3 camera_normal = normalize((normal_mat * vec4(world_normal, 0)).xyz);
-
-  float n_sign = -sign(view_vec.z);
-
+  
   float sum = 0.f;
-  const int USED_DIRS = DIR_COUNT;
+  const int USED_DIRS = 1;
   vec2 dir_radius = min(100.0/length(view_vec), 32.0) / vec2(textureSize(depth, 0));
 
+  ivec2 pixel_pos = ivec2(gl_FragCoord.xy);
+  float base_angle = gtao_direction(pixel_pos) + angle_offset;
+
   for (int dir_index = 0; dir_index < USED_DIRS; dir_index++) {    
-    vec2 dir = dir_radius * DIRECTIONS[dir_index];
-    vec3 end_pos = vec3(screen_uv, frag_depth) + vec3(DIRECTIONS[dir_index], 0);
+    float direction_angle = 2 * PI * (base_angle + float(dir_index)/float(USED_DIRS));
+    vec2 dir = vec2(cos(direction_angle), sin(direction_angle));
+
+    vec3 end_pos = vec3(screen_uv, frag_depth) + vec3(dir, 0);
     vec3 camera_end_pos = reconstruct_view_vec(end_pos.xy, end_pos.z, fovy, aspect, znear, zfar); 
     vec3 camera_dir = normalize(camera_end_pos - view_vec); //sample dir in camera space
     
@@ -76,9 +73,8 @@ void main() {
     float n_dot_w0 = clamp(dot(normalize(nproj), w0), -1, 1);
     float n_angle = acos(n_dot_w0) * sign(nd);
 
-    vec3 hor_pos = find_horizon_w0(depth, vec3(screen_uv, frag_depth), dir, view_vec, w0);
+    vec3 hor_pos = find_horizon_w0(depth, vec3(screen_uv, frag_depth), dir_radius * dir, view_vec, w0);
 
-    
     vec3 delta = hor_pos - view_vec;
     float delta_length = length(delta);
     
@@ -90,7 +86,7 @@ void main() {
     h = min(h + min(h - n_angle, PI/2), h);
 
   #if (AO_MODE == COS_AO)
-    sum += npoj_length * 0.25 * max(-cos(2 * h - n_angle) + cos(n_angle) + 2*h*sin(n_angle), 0);  
+    sum += npoj_length * 0.5 * max(-cos(2 * h - n_angle) + cos(n_angle) + 2*h*sin(n_angle), 0);  
   #endif
   #if (AO_MODE == UNIFORM_AO)
     sum += 1 - clamp(cos(h), 0, 1);
@@ -99,6 +95,10 @@ void main() {
 
   sum = sum / (USED_DIRS);
   occlusion = sum;
+}
+
+float gtao_direction(in ivec2 pos) {
+  return (1.0 / 16.0) * ((((pos.x + pos.y) & 3) << 2) + (pos.x & 3));
 }
 
 vec3 find_horizon_w0(in sampler2D depth, vec3 screen_start, vec2 dir, vec3 camera_pos, vec3 w0) {

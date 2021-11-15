@@ -142,7 +142,6 @@ int main() {
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   GTAO gtao {render_graph, WIDTH, HEIGHT};
 
-  //auto ssao_texture = create_ssao_texture(render_graph, WIDTH, HEIGHT); 
   auto ssr_texture = create_ssr_tex(render_graph, WIDTH, HEIGHT);
 
   SceneRenderer scene_renderer {scene};
@@ -150,8 +149,6 @@ int main() {
   DeferedShadingPass shading_pass {render_graph, app_init.window};
 
   imgui_create_fonts(transfer_pool);
-
-  //SSAOPass ssao_pass {render_graph, ssao_texture};
 
   auto shadows_tex = render_graph.create_image(
     VK_IMAGE_TYPE_2D, 
@@ -197,14 +194,12 @@ int main() {
     scene_renderer.draw(render_graph, gbuffer);
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     downsample_depth(render_graph, gbuffer.depth);
-    
+
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-    //ssao_pass.draw(render_graph, gbuffer.depth, ssao_texture, SSAOInParams {projection, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f});
-    //add_gtao_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gtao.raw);
-    gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
 
@@ -219,7 +214,7 @@ int main() {
     render_graph.submit();
 
     render_graph.remap(gbuffer.depth, gbuffer.prev_depth);
-    render_graph.remap(gtao.filtered, gtao.prev_frame);
+    render_graph.remap(gtao.output, gtao.prev_frame);
 
     prev_mvp = projection * camera.get_view_mat();
   }

@@ -31,6 +31,12 @@ struct GTAO {
     rendergraph::ImageResourceId depth,
     rendergraph::ImageResourceId normal);
   
+  void add_main_pass_graphics(
+    rendergraph::RenderGraph &graph,
+    const GTAOParams &params,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId normal);
+  
   void add_filter_pass(
     rendergraph::RenderGraph &graph,
     const GTAOParams &params,
@@ -47,21 +53,16 @@ struct GTAO {
   rendergraph::ImageResourceId prev_frame; //previous frame
   rendergraph::ImageResourceId output; //final
 
+private:
+
+  gpu::GraphicsPipeline main_pipeline_gfx;
   gpu::ComputePipeline main_pipeline;
   gpu::ComputePipeline filter_pipeline;
   gpu::ComputePipeline reproject_pipeline;
+  
+  uint32_t frame_count = 0;
 
   VkSampler sampler;
 };
-
-void add_gtao_main_pass(
-  rendergraph::RenderGraph &graph, 
-  const GTAOParams &params,
-  rendergraph::ImageResourceId depth,
-  rendergraph::ImageResourceId normal,
-  rendergraph::ImageResourceId out_image);
-
-void add_gtao_filter_pass();
-void add_gtao_reproject_pass();
 
 #endif

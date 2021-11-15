@@ -1,6 +1,10 @@
 #version 460
 #include <gbuffer_encode.glsl>
 
+#define STATIC_REPROJECT 0
+#define MATRIX_REPROJECT 1
+#define REPROJECT_MODE MATRIX_REPROJECT 
+
 layout(set = 0, binding = 0) uniform ReprojectParams {
   mat4 camera_to_prev_frame;
   float fovy;
@@ -22,10 +26,12 @@ void main() {
   uvec2 pixel_pos = gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy;
   vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
 
-  float ao = texture(current_ao, screen_uv).r;
+  float new_ao = texture(current_ao, screen_uv).r;
   float current_depth = texture(current_depth, screen_uv).x;
   vec3 cur_view = reconstruct_view_vec(screen_uv, current_depth, fovy, aspect, znear, zfar);
+  float ao = new_ao;
 
+#if REPROJECT_MODE == MATRIX_REPROJECT
   vec4 reprojected = camera_to_prev_frame * vec4(cur_view, 1);
   vec3 prev_view = reprojected.xyz / reprojected.w;
   prev_view.xy = 0.5 * prev_view.xy + vec2(0.5);
@@ -41,10 +47,21 @@ void main() {
     float delta = abs(reprojected_z - sampled_z);
 
     if (delta < MAX_DELTA && sampled_depth < 1.0) {
-      ao = mix(sampled_ao, ao, 0.1);
+      ao = mix(sampled_ao, new_ao, 0.1);
     }
-    // = x * (1-a) + y * a
-  }
 
+  }
+#elif REPROJECT_MODE == STATIC_REPROJECT
+  float sampled_depth = textureLod(prev_depth, screen_uv, 0).x;
+  float sampled_ao = textureLod(prev_ao, screen_uv, 0).x;
+
+  float sampled_z = linearize_depth2(sampled_depth, znear, zfar);
+  const float MAX_DELTA = 0.0000001;
+  float delta = abs(sampled_z - cur_view.z);
+  if (delta < MAX_DELTA && sampled_depth < 1.0) {
+    ao = mix(sampled_ao, new_ao, 0.1);
+  }
+#endif
+  
   imageStore(reprojected_ao, ivec2(pixel_pos), vec4(ao, 0, 0, 0));
 }

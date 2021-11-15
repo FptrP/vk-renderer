@@ -1,4 +1,5 @@
 #include "gtao.hpp"
+#include <cstdlib>
 
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
@@ -22,6 +23,12 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
 
   reproject_pipeline = gpu::create_compute_pipeline();
   reproject_pipeline.set_program("gtao_reproject");
+
+  main_pipeline_gfx = gpu::create_graphics_pipeline();
+  main_pipeline_gfx.set_program("gtao_main");
+  main_pipeline_gfx.set_registers({});
+  main_pipeline_gfx.set_vertex_input({});
+  main_pipeline_gfx.set_rendersubpass({false, {graph.get_descriptor(raw).format}});
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 }
@@ -155,38 +162,41 @@ void GTAO::add_reprojection_pass(
     });
 }
 
-void add_gtao_main_pass(
-  rendergraph::RenderGraph &graph,
-  const GTAOParams &params,
-  rendergraph::ImageResourceId depth,
-  rendergraph::ImageResourceId normal,
-  rendergraph::ImageResourceId out_image)
+void GTAO::add_main_pass_graphics(
+    rendergraph::RenderGraph &graph,
+    const GTAOParams &params,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId normal)
 {
-  auto pipeline = gpu::create_graphics_pipeline();
-  pipeline.set_program("gtao_main");
-  pipeline.set_registers({});
-  pipeline.set_vertex_input({});
-  pipeline.set_rendersubpass({false, {graph.get_descriptor(out_image).format}});
-  
-  auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
-  
+  struct PushConstants {
+    float angle_offset;
+  };
+
   struct PassData {
     rendergraph::ImageViewId rt;
     rendergraph::ImageViewId depth;
     rendergraph::ImageViewId norm;
   };
 
+  const float angle_offsets[6] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f};
+  float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))];
+  base_angle += rand()/float(RAND_MAX) - 0.5;
+
+  PushConstants constants {base_angle};
+
+  frame_count += 1;
+
   graph.add_task<PassData>("GTAO",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.norm = builder.sample_image(normal, VK_SHADER_STAGE_FRAGMENT_BIT);
-      input.rt = builder.use_color_attachment(out_image, 0, 0);
+      input.rt = builder.use_color_attachment(raw, 0, 0);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       auto block = cmd.allocate_ubo<GTAOParams>();
       *block.ptr = params;
 
-      auto set = resources.allocate_set(pipeline, 0);
+      auto set = resources.allocate_set(main_pipeline_gfx, 0);
     
       gpu::write_set(set,
         gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
@@ -198,10 +208,11 @@ void add_gtao_main_pass(
       auto h = image_info.height;
 
       cmd.set_framebuffer(w, h, {resources.get_view(input.rt)});
-      cmd.bind_pipeline(pipeline);
+      cmd.bind_pipeline(main_pipeline_gfx);
       cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);
       cmd.bind_scissors(0, 0, w, h);
       cmd.bind_descriptors_graphics(0, {set}, {block.offset});
+      cmd.push_constants_graphics(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
       cmd.draw(3, 1, 0, 0);
       cmd.end_renderpass();
     });
