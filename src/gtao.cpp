@@ -15,6 +15,9 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   prev_frame = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   output = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   
+  info.format = VK_FORMAT_R8G8_UNORM;
+  accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
+  
   main_pipeline = gpu::create_compute_pipeline();
   main_pipeline.set_program("gtao_compute_main");
 
@@ -29,6 +32,9 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   main_pipeline_gfx.set_registers({});
   main_pipeline_gfx.set_vertex_input({});
   main_pipeline_gfx.set_rendersubpass({false, {graph.get_descriptor(raw).format}});
+
+  accumulate_pipeline = gpu::create_compute_pipeline();
+  accumulate_pipeline.set_program("gtao_accumulate");
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 }
@@ -162,6 +168,53 @@ void GTAO::add_reprojection_pass(
     });
 }
 
+void GTAO::add_accumulate_pass(
+    rendergraph::RenderGraph &graph,
+    const GTAOReprojection &params,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId prev_depth)
+{
+  struct PassData {
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId prev_depth;
+    rendergraph::ImageViewId gtao;
+    rendergraph::ImageViewId accumulated_ao;
+  };
+
+  struct PushConstants {
+    float znear;
+    float zfar;
+  };
+
+  PushConstants constants {params.znear, params.zfar};
+
+  graph.add_task<PassData>("GTAO_accumulate",
+    [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.gtao = builder.sample_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.accumulated_ao = builder.use_storage_image(accumulated_ao, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+
+      auto set = resources.allocate_set(accumulate_pipeline, 0);
+    
+      gpu::write_set(set,
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {1, resources.get_view(input.prev_depth), sampler},
+        gpu::TextureBinding {2, resources.get_view(input.gtao), sampler},
+        gpu::StorageTextureBinding {3, resources.get_view(input.accumulated_ao)}
+      );
+
+      const auto &extent = resources.get_image(input.accumulated_ao).get_extent();
+
+      cmd.bind_pipeline(accumulate_pipeline);
+      cmd.bind_descriptors_compute(0, {set}, {});
+      cmd.push_constants_compute(0, sizeof(constants), &constants);
+      cmd.dispatch(extent.width/8, extent.height/4, 1);
+    });
+}
+
 void GTAO::add_main_pass_graphics(
     rendergraph::RenderGraph &graph,
     const GTAOParams &params,
@@ -178,8 +231,8 @@ void GTAO::add_main_pass_graphics(
     rendergraph::ImageViewId norm;
   };
 
-  const float angle_offsets[6] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f};
-  float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))];
+  const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
+  float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
   base_angle += rand()/float(RAND_MAX) - 0.5;
 
   PushConstants constants {base_angle};

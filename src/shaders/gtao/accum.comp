@@ -1,0 +1,46 @@
+#version 460
+#include <gbuffer_encode.glsl>
+
+const float REPROJECT_BIAS = 1e-6;
+const float MAX_SAMPLES = 255.f;
+
+layout(set = 0, binding = 0) uniform sampler2D current_depth;
+layout(set = 0, binding = 1) uniform sampler2D prev_depth;
+layout(set = 0, binding = 2) uniform sampler2D current_ao;
+layout(set = 0, binding = 3, rg8) uniform image2D accumulated_ao;
+
+layout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
+
+layout (push_constant) uniform PushConstants {
+  float znear;
+  float zfar;
+};
+
+void main() {
+  ivec2 tex_size = ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+  ivec2 pixel_pos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
+  vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
+
+  float new_ao = texelFetch(current_ao, pixel_pos, 0).r;
+  float new_depth = texelFetch(current_depth, pixel_pos, 0).x;
+  float old_depth = texelFetch(prev_depth, pixel_pos, 0).x;
+
+  float new_z = linearize_depth2(new_depth, znear, zfar);
+  float old_z = linearize_depth2(old_depth, znear, zfar);
+
+  float computed_ao = new_ao;
+  float samples_count = 1.f;
+
+  if (abs(old_z - new_z) < REPROJECT_BIAS && old_depth < 1.0) {
+    vec2 accumulated = imageLoad(accumulated_ao, pixel_pos).xy;
+    samples_count = 255.f * accumulated.y;
+
+    computed_ao = (accumulated.x * samples_count + new_ao)/(samples_count + 1.f);
+    samples_count += 1.f;
+    if (samples_count > MAX_SAMPLES) {
+      samples_count = 1.f;
+    } 
+  }
+
+  imageStore(accumulated_ao, pixel_pos, vec4(computed_ao, samples_count/255.f, 0.f, 0.f));
+}

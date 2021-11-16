@@ -120,6 +120,10 @@ int main() {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/reproject_comp.spv", "main"}
   });
 
+  gpu::create_program("gtao_accumulate", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/accum_comp.spv", "main"}
+  });
+
   gpu::create_program("downsample_depth", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/depth_downsample/shader_vert.spv", "main"},
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/depth_downsample/shader_frag.spv", "main"}
@@ -160,7 +164,7 @@ int main() {
     VK_IMAGE_TILING_OPTIMAL, 
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 
-  scene::Camera camera;
+  scene::Camera camera({0.f, 1.f, -1.f});
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
   glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{0, 2, -1}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
 
@@ -201,7 +205,8 @@ int main() {
 
     gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
-    gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
+    //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
+    gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
 
     add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, ssr_texture, SSRParams {
       normal_mat,
@@ -209,7 +214,7 @@ int main() {
     });
 
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, gtao.output, sampler, DrawTex::ShowR);
+    add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     add_present_subpass(render_graph);
     render_graph.submit();
 

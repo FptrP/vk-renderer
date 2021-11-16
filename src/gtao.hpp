@@ -48,10 +48,17 @@ struct GTAO {
     rendergraph::ImageResourceId depth,
     rendergraph::ImageResourceId prev_depth);
 
+  void add_accumulate_pass(
+    rendergraph::RenderGraph &graph,
+    const GTAOReprojection &params,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId prev_depth);
+
   rendergraph::ImageResourceId raw; //output of main pass
   rendergraph::ImageResourceId filtered; //output of filter pass
   rendergraph::ImageResourceId prev_frame; //previous frame
   rendergraph::ImageResourceId output; //final
+  rendergraph::ImageResourceId accumulated_ao;
 
 private:
 
@@ -59,7 +66,8 @@ private:
   gpu::ComputePipeline main_pipeline;
   gpu::ComputePipeline filter_pipeline;
   gpu::ComputePipeline reproject_pipeline;
-  
+  gpu::ComputePipeline accumulate_pipeline;
+
   uint32_t frame_count = 0;
 
   VkSampler sampler;

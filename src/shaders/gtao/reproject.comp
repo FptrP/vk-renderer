@@ -3,7 +3,10 @@
 
 #define STATIC_REPROJECT 0
 #define MATRIX_REPROJECT 1
-#define REPROJECT_MODE MATRIX_REPROJECT 
+#define REPROJECT_MODE STATIC_REPROJECT 
+
+const float REPROJECT_BIAS = 1e-6;
+const float REPROJECT_COEF = 0.05;
 
 layout(set = 0, binding = 0) uniform ReprojectParams {
   mat4 camera_to_prev_frame;
@@ -22,12 +25,12 @@ layout(set = 0, binding = 5, r8) uniform writeonly image2D reprojected_ao;
 layout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
 
 void main() {
-  uvec2 tex_size = gl_NumWorkGroups.xy * gl_WorkGroupSize.xy;
-  uvec2 pixel_pos = gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy;
+  ivec2 tex_size = ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+  ivec2 pixel_pos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
   vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
 
-  float new_ao = texture(current_ao, screen_uv).r;
-  float current_depth = texture(current_depth, screen_uv).x;
+  float new_ao = texelFetch(current_ao, pixel_pos, 0).r;
+  float current_depth = texelFetch(current_depth, pixel_pos, 0).x;
   vec3 cur_view = reconstruct_view_vec(screen_uv, current_depth, fovy, aspect, znear, zfar);
   float ao = new_ao;
 
@@ -43,23 +46,21 @@ void main() {
     float reprojected_z = linearize_depth2(prev_view.z, znear, zfar);
     float sampled_z = linearize_depth2(sampled_depth, znear, zfar);
 
-    const float MAX_DELTA = 0.001;
     float delta = abs(reprojected_z - sampled_z);
 
-    if (delta < MAX_DELTA && sampled_depth < 1.0) {
-      ao = mix(sampled_ao, new_ao, 0.1);
+    if (delta < REPROJECT_BIAS && sampled_depth < 1.0) {
+      ao = mix(sampled_ao, new_ao, REPROJECT_COEF);
     }
 
   }
 #elif REPROJECT_MODE == STATIC_REPROJECT
-  float sampled_depth = textureLod(prev_depth, screen_uv, 0).x;
-  float sampled_ao = textureLod(prev_ao, screen_uv, 0).x;
+  float sampled_depth = texelFetch(prev_depth, pixel_pos, 0).x;
+  float sampled_ao = texelFetch(prev_ao, pixel_pos, 0).x;
 
   float sampled_z = linearize_depth2(sampled_depth, znear, zfar);
-  const float MAX_DELTA = 0.0000001;
   float delta = abs(sampled_z - cur_view.z);
-  if (delta < MAX_DELTA && sampled_depth < 1.0) {
-    ao = mix(sampled_ao, new_ao, 0.1);
+  if (delta < REPROJECT_BIAS && sampled_depth < 1.0) {
+    ao = mix(sampled_ao, new_ao, REPROJECT_COEF);
   }
 #endif
   

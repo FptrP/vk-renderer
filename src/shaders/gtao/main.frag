@@ -20,7 +20,6 @@ layout (push_constant) uniform PushConstants {
   float angle_offset;
 };
 
-#define DIR_COUNT 8
 #define RADIUS 0.01
 #define SAMPLES 20
 #define THIKNESS 0.05
