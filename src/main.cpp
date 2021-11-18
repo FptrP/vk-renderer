@@ -221,8 +221,6 @@ int main() {
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-
-
     //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);

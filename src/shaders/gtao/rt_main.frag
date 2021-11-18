@@ -33,7 +33,7 @@ layout (push_constant) uniform PushConsts {
 
 float get_visibility(in vec3 world_pos, in vec3 dir) {
   rayQueryEXT ray_query;
-	rayQueryInitializeEXT(ray_query, tlas, 0, 0xFF, world_pos, 1e-6, dir, 1.0);
+	rayQueryInitializeEXT(ray_query, tlas, 0, 0xFF, world_pos, 1e-12, dir, 1.0);
   while (rayQueryProceedEXT(ray_query)) {}
 
   float visibility = 1.f;
@@ -78,16 +78,16 @@ void main() {
 
   vec3 tangent = get_tangent(normal);
   vec3 bitangent = normalize(cross(normal, tangent));
-  tangent = normalize(cross(bitangent, tangent));
+  tangent = normalize(cross(bitangent, normal));
   
   float angle = 2 * PI * (rotation + gtao_direction(pixel_pos));
   tangent = normalize(cos(angle) * tangent + sin(angle) * bitangent);
   bitangent = normalize(cross(normal, tangent));
-  tangent = normalize(cross(bitangent, tangent));
+  tangent = normalize(cross(bitangent, normal));
 
   float sum = 0.f;
-
-  for (int i = 0; i < DIRECTION_COUNT; i++) {
+  const int SAMPLES_COUNT = DIRECTION_COUNT;
+  for (int i = 0; i < SAMPLES_COUNT; i++) {
     vec3 dir = normalize(ao_directions[i].xyz);
     dir = normalize(dir.z * normal + dir.x * tangent + dir.y * bitangent);
     vec3 scaled_dir = 0.5 * dir; 
@@ -95,6 +95,6 @@ void main() {
     sum += get_visibility(world_pos, scaled_dir) * max(dot(dir, normal), 0.f);
   }
 
-  sum /= DIRECTION_COUNT;
+  sum /= SAMPLES_COUNT;
   occlusion = sum;
 }
