@@ -14,6 +14,14 @@ struct GTAOParams {
   float zfar;
 };
 
+struct GTAORTParams {
+  glm::mat4 camera_to_world;
+  float fovy;
+  float aspect;
+  float znear;
+  float zfar;
+};
+
 struct GTAOReprojection {
   glm::mat4 camera_to_prev_frame;
   float fovy;
@@ -28,6 +36,13 @@ struct GTAO {
   void add_main_pass(
     rendergraph::RenderGraph &graph,
     const GTAOParams &params,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId normal);
+  
+  void add_main_rt_pass(
+    rendergraph::RenderGraph &graph,
+    const GTAORTParams &params,
+    VkAccelerationStructureKHR tlas,
     rendergraph::ImageResourceId depth,
     rendergraph::ImageResourceId normal);
   
@@ -64,10 +79,13 @@ private:
 
   gpu::GraphicsPipeline main_pipeline_gfx;
   gpu::ComputePipeline main_pipeline;
+  gpu::GraphicsPipeline rt_main_pipeline;
   gpu::ComputePipeline filter_pipeline;
   gpu::ComputePipeline reproject_pipeline;
   gpu::ComputePipeline accumulate_pipeline;
 
+  gpu::Buffer random_vectors;
+  
   uint32_t frame_count = 0;
 
   VkSampler sampler;

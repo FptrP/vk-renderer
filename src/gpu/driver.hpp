@@ -31,6 +31,7 @@ namespace gpu {
   struct DeviceConfig {
     VkSurfaceKHR surface {nullptr};
     std::set<std::string> extensions;
+    bool use_ray_query = false;
   };
 
   struct Instance {

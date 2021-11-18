@@ -135,7 +135,7 @@ namespace scene {
 
   }
 
-  static void load_verts(gpu::TransferCmdPool &transfer_pool, const aiScene *scene, CompiledScene &out_scene) {
+  static void load_verts(gpu::TransferCmdPool &transfer_pool, const aiScene *scene, CompiledScene &out_scene, bool for_ray_traing) {
     std::vector<Vertex> cpu_verts;
     std::vector<uint32_t> cpu_indexes;
     load_verts_memory(scene, out_scene.meshes, cpu_verts, cpu_indexes);
@@ -143,8 +143,13 @@ namespace scene {
     const uint64_t verts_size = sizeof(Vertex) * cpu_verts.size();
     const uint64_t index_size = sizeof(uint32_t) * cpu_indexes.size();
 
-    out_scene.vertex_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, verts_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    out_scene.index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    VkBufferUsageFlags ray_tracing_flags = 0; 
+    if (for_ray_traing) {
+      ray_tracing_flags |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+    }
+
+    out_scene.vertex_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, verts_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|ray_tracing_flags);
+    out_scene.index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|ray_tracing_flags);
 
     const uint32_t TRANSFER_SIZE = 10 * 1024;
     gpu::Buffer transfer_buffer;
@@ -242,12 +247,12 @@ namespace scene {
     }
   }
 
-  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder) {
+  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder, bool for_ray_traing) {
     CompiledScene result_scene {};
 
     Assimp::Importer importer {};
     auto aiscene = importer.ReadFile(path, aiProcess_GenSmoothNormals|aiProcess_Triangulate| aiProcess_SortByPType | aiProcess_FlipUVs);
-    load_verts(transfer_pool, aiscene, result_scene);
+    load_verts(transfer_pool, aiscene, result_scene, for_ray_traing);
     load_materials(transfer_pool, aiscene, folder, result_scene);
     load_nodes(aiscene->mRootNode, result_scene.root);
     return result_scene;

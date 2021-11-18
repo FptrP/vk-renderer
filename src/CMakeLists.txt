@@ -35,6 +35,7 @@ add_executable(main
   ssr.cpp
 
   scene/scene.cpp
+  scene/scene_as.cpp
   scene/images.cpp)
 
 target_link_libraries(main vk-gpu ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES} assimp)

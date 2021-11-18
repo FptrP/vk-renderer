@@ -168,18 +168,47 @@ namespace gpu {
       }
     };
 
+    auto ext_set = cfg.extensions;
     
+    if (cfg.use_ray_query) {
+      //ext_set.insert(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+      //ext_set.insert(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+      ext_set.insert("VK_KHR_deferred_host_operations");
+      ext_set.insert("VK_KHR_acceleration_structure");
+      ext_set.insert("VK_KHR_ray_query");
+    }
+
     std::vector<const char*> extensions;
-    extensions.reserve(cfg.extensions.size());
-    for (auto &s : cfg.extensions) {
+    extensions.reserve(ext_set.size());
+    for (auto &s : ext_set) {
       extensions.push_back(s.c_str());
     }
 
     VkPhysicalDeviceFeatures features {};
+    VkPhysicalDeviceBufferDeviceAddressFeatures device_adders {
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+      nullptr,
+      VK_TRUE,
+      VK_FALSE,
+      VK_FALSE
+    };
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR
+    };
+    acceleration_structure.accelerationStructure = VK_TRUE;
+    acceleration_structure.accelerationStructureCaptureReplay = VK_TRUE;
+
+    VkPhysicalDeviceRayQueryFeaturesKHR ray_query_featrues {};
+    ray_query_featrues.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+    ray_query_featrues.rayQuery = VK_TRUE;
+    ray_query_featrues.pNext = nullptr;
+    acceleration_structure.pNext = &ray_query_featrues;
+    device_adders.pNext = &acceleration_structure;
 
     VkDeviceCreateInfo info {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = nullptr,
+      .pNext = cfg.use_ray_query? &device_adders : nullptr,
       .flags = 0,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = queues,
@@ -217,9 +246,12 @@ namespace gpu {
     alloc_info.device = logical_device;
     alloc_info.instance = instance;
     alloc_info.physicalDevice = physical_device;
-    alloc_info.vulkanApiVersion = VK_API_VERSION_1_0;
+    alloc_info.vulkanApiVersion = VK_API_VERSION_1_2;
     alloc_info.pVulkanFunctions = &vk_func;
-
+    if (cfg.use_ray_query) {
+      alloc_info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    }
+    
     VKCHECK(vmaCreateAllocator(&alloc_info, &allocator));
   }
   

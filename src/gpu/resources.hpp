@@ -71,6 +71,8 @@ namespace gpu {
     
     void *get_mapped_ptr() const { return mapped_ptr; }
 
+    VkDeviceAddress get_device_address() const;
+
     Buffer(Buffer&) = delete;
     const Buffer &operator=(const Buffer&) = delete;
   
@@ -159,6 +161,9 @@ namespace gpu {
     std::unordered_map<ImageViewRange, VkImageView> views;
   };
 
+  struct AccelerationStructure {
+
+  };
 }
 
 #endif

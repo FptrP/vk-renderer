@@ -108,6 +108,17 @@ void SceneRenderer::update_scene(const glm::mat4 &camera, const glm::mat4 &proje
   
   node_process(*target.root, draw_calls, transforms, identity);
 
+  /*for (const auto &mat : transforms) {
+    for (int y = 0; y < 3; y++) {
+      for (int x = 0; x < 4; x++) {
+        std::cout << mat[y][x] << " ";
+      }
+
+      std::cout << "\n";
+    }
+    std::cout << "\n";
+  }*/
+
   GbufConst consts {
     camera,
     projection,
@@ -166,7 +177,6 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
       cmd.bind_index_buffer(ibuf, 0, VK_INDEX_TYPE_UINT32);
       
       auto set = resources.allocate_set(opaque_pipeline.get_layout(0));
-        
       gpu::write_set(set, 
         gpu::UBOBinding {0, resources.get_buffer(view_proj_buffer)},
         gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},

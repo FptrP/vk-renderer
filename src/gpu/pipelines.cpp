@@ -172,7 +172,7 @@ namespace gpu {
     
     spirv_cross::Compiler compiler {(const uint32_t*)code.data(), code.size()/sizeof(uint32_t)};
     auto resources = compiler.get_shader_resources();
-
+    
     try {
       add_resources(layouts, compiler, shader.stage, resources.storage_images.data(), resources.storage_images.size(), VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
       add_resources(layouts, compiler, shader.stage, resources.storage_buffers.data(), resources.storage_buffers.size(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
@@ -180,6 +180,7 @@ namespace gpu {
       add_resources(layouts, compiler, shader.stage, resources.sampled_images.data(), resources.sampled_images.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
       add_resources(layouts, compiler, shader.stage, resources.separate_images.data(), resources.separate_images.size(), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
       add_resources(layouts, compiler, shader.stage, resources.separate_samplers.data(), resources.separate_samplers.size(), VK_DESCRIPTOR_TYPE_SAMPLER);
+      add_resources(layouts, compiler, shader.stage, resources.acceleration_structures.data(), resources.acceleration_structures.size(), VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
     }
     catch(...) {
       vkDestroyShaderModule(api_device, mod, nullptr);

@@ -6,6 +6,7 @@
 
 #include "gpu/gpu.hpp"
 #include "scene/scene.hpp"
+#include "scene/scene_as.hpp"
 #include "rendergraph/rendergraph.hpp"
 
 #include "backbuffer_subpass2.hpp"
@@ -17,6 +18,9 @@
 #include "downsample_pass.hpp"
 #include "ssr.hpp"
 #include "gtao.hpp"
+
+#define ENABLE_VALIDATION 1
+#define USE_RAY_QUERY 1
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -41,11 +45,16 @@ struct AppInit {
 
     gpu::InstanceConfig instance_info {};
     instance_info.api_version = VK_API_VERSION_1_2;
+#if ENABLE_VALIDATION
     instance_info.layers = {"VK_LAYER_KHRONOS_validation"};
+#endif
     instance_info.extensions.insert(ext.begin(), ext.end());
     instance_info.extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     gpu::DeviceConfig device_info {};
+#if USE_RAY_QUERY
+    device_info.use_ray_query = true;
+#endif
     device_info.extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
     gpu::init_all(instance_info, debug_cb, device_info, {width, height}, [&](VkInstance instance){
@@ -112,6 +121,11 @@ int main() {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/main_comp.spv", "main"}
   });
 
+  gpu::create_program("gtao_rt_main", {
+    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gtao/main_vert.spv", "main"},
+    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gtao/rt_main_frag.spv", "main"}
+  });
+
   gpu::create_program("gtao_filter", {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/filter_comp.spv", "main"}
   });
@@ -142,6 +156,8 @@ int main() {
 
   gpu::TransferCmdPool transfer_pool {};
   auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
+  scene::SceneAccelerationStructure acceleration_struct;
+  acceleration_struct.build(transfer_pool, scene);
 
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   GTAO gtao {render_graph, WIDTH, HEIGHT};
@@ -200,10 +216,15 @@ int main() {
     downsample_depth(render_graph, gbuffer.depth);
 
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
+    auto camera_to_world = glm::inverse(camera.get_view_mat());
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
+    GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-    gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+
+
+    //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);

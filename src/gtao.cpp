@@ -1,10 +1,15 @@
 #include "gtao.hpp"
 #include <cstdlib>
+#include <random>
+#include <cstring>
+#include <iostream>
 
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 }
+
+static gpu::Buffer create_random_vectors(uint32_t vectors_count);
 
 GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
@@ -14,12 +19,20 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   filtered = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   prev_frame = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   output = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
+
+  random_vectors = create_random_vectors(64);
   
   info.format = VK_FORMAT_R8G8_UNORM;
   accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   
   main_pipeline = gpu::create_compute_pipeline();
   main_pipeline.set_program("gtao_compute_main");
+
+  rt_main_pipeline = gpu::create_graphics_pipeline();
+  rt_main_pipeline.set_program("gtao_rt_main");
+  rt_main_pipeline.set_registers({});
+  rt_main_pipeline.set_vertex_input({});
+  rt_main_pipeline.set_rendersubpass({false, {graph.get_descriptor(raw).format}});
 
   filter_pipeline = gpu::create_compute_pipeline();
   filter_pipeline.set_program("gtao_filter");
@@ -78,6 +91,54 @@ void GTAO::add_main_pass(
       cmd.dispatch(extent.width/8, extent.height/4, 1);
     });
 
+}
+
+void GTAO::add_main_rt_pass(
+    rendergraph::RenderGraph &graph,
+    const GTAORTParams &params,
+    VkAccelerationStructureKHR tlas,
+    rendergraph::ImageResourceId depth,
+    rendergraph::ImageResourceId normal)
+{
+  struct PassData {
+    rendergraph::ImageViewId rt;
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId norm;
+  };
+
+  float base_angle = rand()/float(RAND_MAX) - 0.5;
+
+  graph.add_task<PassData>("GTAO_rt_main",
+    [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.norm = builder.sample_image(normal, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.rt = builder.use_color_attachment(raw, 0, 0);
+    },
+    [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      auto block = cmd.allocate_ubo<GTAORTParams>();
+      *block.ptr = params;
+
+      auto set = resources.allocate_set(rt_main_pipeline, 0);
+    
+      gpu::write_set(set,
+        gpu::UBOBinding {0, cmd.get_ubo_pool(), block},
+        gpu::TextureBinding {1, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {2, resources.get_view(input.norm), sampler},
+        gpu::AccelerationStructBinding {3, tlas},
+        gpu::UBOBinding {4, random_vectors}
+      );
+
+      const auto &extent = resources.get_image(input.rt).get_extent();
+
+      cmd.set_framebuffer(extent.width, extent.height, {resources.get_view(input.rt)});
+      cmd.bind_pipeline(rt_main_pipeline);
+      cmd.bind_viewport(0.f, 0.f, float(extent.width), float(extent.height), 0.f, 1.f);
+      cmd.bind_scissors(0, 0, extent.width, extent.height);
+      cmd.push_constants_graphics(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &base_angle);
+      cmd.bind_descriptors_graphics(0, {set}, {block.offset, 0});
+      cmd.draw(3, 1, 0, 0);
+      cmd.end_renderpass();
+    });
 }
 
 void GTAO::add_filter_pass(
@@ -269,4 +330,35 @@ void GTAO::add_main_pass_graphics(
       cmd.draw(3, 1, 0, 0);
       cmd.end_renderpass();
     });
+}
+
+static gpu::Buffer create_random_vectors(uint32_t vectors_count) {
+  std::uniform_real_distribution<float> random_floats {0.0, 1.0};
+  std::default_random_engine generator;
+  std::vector<glm::vec4> random_vectors;
+  random_vectors.reserve(vectors_count);
+
+  while (random_vectors.size() < vectors_count) {
+    float x = random_floats(generator) * 2.0 - 1.0;
+    float y = random_floats(generator) * 2.0 - 1.0;
+    float z = random_floats(generator);
+
+    glm::vec4 dir {x, y, z, 0.f};
+    float length = glm::length(dir);
+    if (length <= 0.00001 || length > 1.f) {
+      continue;
+    }
+
+    dir /= length;
+    //std::cout << dir.z << "\n";
+    random_vectors.push_back(dir);
+  }
+
+  auto buffer_size = sizeof(glm::vec4) * random_vectors.size();
+  
+  gpu::Buffer vec_buffer;
+  vec_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  std::memcpy(vec_buffer.get_mapped_ptr(), random_vectors.data(), buffer_size);
+
+  return vec_buffer;
 }

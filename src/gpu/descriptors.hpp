@@ -169,6 +169,23 @@ namespace gpu {
     VkDescriptorImageInfo info {};
   };
 
+  struct AccelerationStructBinding : BaseBinding {
+    AccelerationStructBinding(uint32_t binding, VkAccelerationStructureKHR tlas)
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR}
+    {
+      tlas_copy = tlas;
+      info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+      info.pNext = nullptr;
+      info.accelerationStructureCount = 1;
+      info.pAccelerationStructures = &tlas_copy;
+
+      desc_write.pNext = &info;
+    }
+  private:
+    VkAccelerationStructureKHR tlas_copy;
+    VkWriteDescriptorSetAccelerationStructureKHR info {}; 
+  };
+
   namespace internal {
     inline void write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0) {
       *ptr = b0.desc_write;

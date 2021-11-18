@@ -54,6 +54,16 @@ namespace gpu {
     vmaFlushAllocation(base, allocation, offset, size);
   }
 
+  VkDeviceAddress Buffer::get_device_address() const {
+    VkBufferDeviceAddressInfo info {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .pNext = nullptr,
+      .buffer = handle
+    };
+
+    return vkGetBufferDeviceAddress(app_device().api_device(), &info);
+  }
+
   void Image::create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
     close();
     auto allocator = app_device().get_allocator();

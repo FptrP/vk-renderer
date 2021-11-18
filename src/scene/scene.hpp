@@ -62,7 +62,7 @@ namespace scene {
   gpu::VertexInput get_vertex_input();
   gpu::VertexInput get_vertex_input_shadow();
 
-  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder);
+  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder, bool for_ray_traing = true);
   gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path);
 }
 
