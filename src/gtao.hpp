@@ -31,7 +31,7 @@ struct GTAOReprojection {
 };
 
 struct GTAO {
-  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height);
+  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query);
 
   void add_main_pass(
     rendergraph::RenderGraph &graph,

@@ -26,7 +26,7 @@ void main() {
   float linear_depth = linearize_depth2(pixel_depth, znear, zfar);
   float weight_sum = 0;
   float ao = 0;
-
+  
   for (int x = 0; x < 4; x++) {
     for (int y = 0; y < 4; y++) {
       ivec2 sample_pos = pixel_pos + ivec2(x - 2, y - 2);

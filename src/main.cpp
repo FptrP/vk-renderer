@@ -20,7 +20,7 @@
 #include "gtao.hpp"
 
 #define ENABLE_VALIDATION 1
-#define USE_RAY_QUERY 1
+#define USE_RAY_QUERY 0
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -155,12 +155,15 @@ int main() {
   gpu_transfer::init(render_graph);
 
   gpu::TransferCmdPool transfer_pool {};
-  auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/");
+  auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
+
+#if USE_RAY_QUERY
   scene::SceneAccelerationStructure acceleration_struct;
   acceleration_struct.build(transfer_pool, scene);
+#endif
 
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
-  GTAO gtao {render_graph, WIDTH, HEIGHT};
+  GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY};
 
   auto ssr_texture = create_ssr_tex(render_graph, WIDTH, HEIGHT);
 
@@ -221,8 +224,8 @@ int main() {
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-    //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
+    gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);

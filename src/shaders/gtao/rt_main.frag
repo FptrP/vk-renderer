@@ -96,5 +96,5 @@ void main() {
   }
 
   sum /= SAMPLES_COUNT;
-  occlusion = sum;
+  occlusion = 2 * sum; //1/PI * 2 * PI * R^2
 }

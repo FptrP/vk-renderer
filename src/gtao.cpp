@@ -11,8 +11,8 @@ rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph
 
 static gpu::Buffer create_random_vectors(uint32_t vectors_count);
 
-GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
-  gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query) {
+  gpu::ImageInfo info {VK_FORMAT_R16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   auto usage = VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
   raw = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
@@ -22,18 +22,20 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
 
   random_vectors = create_random_vectors(64);
   
-  info.format = VK_FORMAT_R8G8_UNORM;
+  info.format = VK_FORMAT_R16G16_SFLOAT;
   accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   
   main_pipeline = gpu::create_compute_pipeline();
   main_pipeline.set_program("gtao_compute_main");
 
-  rt_main_pipeline = gpu::create_graphics_pipeline();
-  rt_main_pipeline.set_program("gtao_rt_main");
-  rt_main_pipeline.set_registers({});
-  rt_main_pipeline.set_vertex_input({});
-  rt_main_pipeline.set_rendersubpass({false, {graph.get_descriptor(raw).format}});
-
+  if (use_ray_query) {
+    rt_main_pipeline = gpu::create_graphics_pipeline();
+    rt_main_pipeline.set_program("gtao_rt_main");
+    rt_main_pipeline.set_registers({});
+    rt_main_pipeline.set_vertex_input({});
+    rt_main_pipeline.set_rendersubpass({false, {graph.get_descriptor(raw).format}});
+  }
+  
   filter_pipeline = gpu::create_compute_pipeline();
   filter_pipeline.set_program("gtao_filter");
 
