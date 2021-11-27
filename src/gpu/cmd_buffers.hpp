@@ -104,6 +104,26 @@ namespace gpu {
     std::vector<VkEvent> used_events;
   };
 
+  struct CmdMarker {
+    CmdMarker(VkCommandBuffer target, const char *name) : cmd {target} {
+      VkDebugUtilsLabelEXT label {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pNext = nullptr,
+        .pLabelName = name,
+        .color {0.f, 0.f, 0.f, 0.f}
+      };
+
+      vkCmdBeginDebugUtilsLabelEXT(cmd, &label);
+    }
+
+    ~CmdMarker() {
+      vkCmdEndDebugUtilsLabelEXT(cmd);
+    }
+
+  private:
+    VkCommandBuffer cmd;
+  };
+
   constexpr uint64_t UBO_POOL_SIZE = 4 * (1 << 10); //4Kb
 
   struct CmdContext {
@@ -141,6 +161,9 @@ namespace gpu {
 
     void push_constants_graphics(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *constants);
     void push_constants_compute(uint32_t offset, uint32_t size, const void *constants);
+    
+    void push_label(const char *name);
+    void pop_label();
     
     void signal_event(VkEvent event, VkPipelineStageFlags stages);
 

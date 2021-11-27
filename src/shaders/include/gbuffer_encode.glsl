@@ -76,6 +76,13 @@ vec3 project_view_vec(vec3 v, float fovy, float aspect, float n, float f) {
 
   return vec3(0.5 * pu + 0.5, 0.5 * pv + 0.5, depth);
 }
+/*
+vec2 project_direction(vec2 v, float fovy, float aspect) {
+  float tg_alpha = tan(fovy/2);
+  float pu = v.x/(-tg_alpha * aspect);
+  float pv = v.y/(-tg_alpha);
+  return normalize(vec2(0.5 * pu + 0.5, 0.5 * pv + 0.5));
+}*/
 
 vec3 clip_screen(vec3 start, vec3 end) {
   vec3 delta = normalize(end - start);

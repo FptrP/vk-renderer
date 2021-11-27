@@ -118,3 +118,32 @@ void clear_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
       );
     });
 }
+
+void clear_color(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image, VkClearColorValue val) {
+  struct Data {};
+
+  auto info = graph.get_descriptor(image);
+
+  graph.add_task<Data>("Clear_color",
+    [&](Data &, rendergraph::RenderGraphBuilder &builder){
+      builder.transfer_write(image, 0, info.mip_levels, 0, info.array_layers);
+    },
+    [=](Data &, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+
+      VkImageSubresourceRange range {
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        0,
+        info.mip_levels,
+        0,
+        info.array_layers
+      };
+
+      vkCmdClearColorImage(
+        cmd.get_command_buffer(),
+        resources.get_image(image).get_image(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &val,
+        1,
+        &range);
+    });  
+}

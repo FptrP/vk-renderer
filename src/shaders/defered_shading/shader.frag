@@ -58,23 +58,29 @@ void main() {
 #if HORIZON_SHADOWS
   {
     vec4 light_camera = camera_mat * vec4(LIGHT_POS, 1);
-    vec3 camera_dir = 0.3 * normalize(light_camera.xyz - camera_view_vec);
-    
-    vec3 light_screen = project_view_vec(camera_view_vec + camera_dir, fovy, aspect, znear, zfar);
-    vec3 pixel_screen = vec3(screen_uv, depth);
-    if (light_screen.x < 0 || light_screen.x > 1 || light_screen.y < 0 || light_screen.y > 1)
-      light_screen = clip_screen(pixel_screen, light_screen);
-    
-    vec3 dir = light_screen - pixel_screen;
-    vec2 extended_dir = clip_screen(pixel_screen.xy, pixel_screen.xy + 2 * normalize(dir.xy));
-    vec3 hor = simple_find_horizon(depth_tex, pixel_screen, extended_dir - pixel_screen.xy, 100, 0.4, znear, zfar);
-    vec3 hor_dir = hor - pixel_screen;
-    vec3 abs_dir = abs(dir);
-    
-    float hor_z_norm = hor_dir.z/max(abs(hor_dir.x), abs(hor_dir.y));
-    float dir_z_norm = dir.z/max(abs_dir.x, abs_dir.y);
+    vec3 L = normalize(light_camera.xyz - camera_view_vec);
+    vec3 L_screen = project_view_vec(camera_view_vec + 0.1 * L, fovy, aspect, znear, zfar);
+    vec2 sample_direction = (128.f/textureSize(depth_tex, 0)) * normalize(L_screen.xy - screen_uv);
 
-    if (dir_z_norm > hor_z_norm) {
+    vec3 camera_normal = (transpose(inverse(camera_mat)) * vec4(normal, 0)).xyz;
+
+    const int SHADOW_SAMPLES = 16;
+    float h_cos = -1.0;
+    float prev_z = camera_view_vec.z;
+
+    for (int i = 1; i <= SHADOW_SAMPLES; i++) {
+      vec2 tc = screen_uv + (float(i)/SHADOW_SAMPLES) * sample_direction;
+      float sampled_depth = textureLod(depth_tex, tc, 0).x;
+      vec3 sample_pos = reconstruct_view_vec(tc, sampled_depth, fovy, aspect, znear, zfar);
+      if (sample_pos.z > prev_z + 0.3) {
+        break;
+      }
+      prev_z = sample_pos.z;
+      h_cos = max(h_cos, dot(camera_normal, normalize(sample_pos - camera_view_vec)));
+    }
+
+    float l_cos = dot(camera_normal, L);
+    if (h_cos > l_cos) {
       shade = 0.1;
     }
   }

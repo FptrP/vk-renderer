@@ -4,6 +4,8 @@
 #include "scene/camera.hpp"
 #include "rendergraph/rendergraph.hpp"
 
+#define GTAO_TRACE_SAMPLES 1
+
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height);
 
 struct GTAOParams {
@@ -69,11 +71,18 @@ struct GTAO {
     rendergraph::ImageResourceId depth,
     rendergraph::ImageResourceId prev_depth);
 
+  void deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId depth);
+  void add_main_pass_deinterleaved(
+    rendergraph::RenderGraph &graph,
+    const GTAOParams &params,
+    rendergraph::ImageResourceId normal);
+
   rendergraph::ImageResourceId raw; //output of main pass
   rendergraph::ImageResourceId filtered; //output of filter pass
   rendergraph::ImageResourceId prev_frame; //previous frame
   rendergraph::ImageResourceId output; //final
   rendergraph::ImageResourceId accumulated_ao;
+  rendergraph::ImageResourceId deinterleaved_depth;
 
 private:
 
@@ -83,7 +92,9 @@ private:
   gpu::ComputePipeline filter_pipeline;
   gpu::ComputePipeline reproject_pipeline;
   gpu::ComputePipeline accumulate_pipeline;
-
+  gpu::ComputePipeline deinterleave_pipeline;
+  gpu::ComputePipeline main_deinterleaved_pipeline;
+  
   gpu::Buffer random_vectors;
   
   uint32_t frame_count = 0;

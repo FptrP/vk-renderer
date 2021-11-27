@@ -62,6 +62,24 @@ namespace rendergraph {
     return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, mip, 1, layer, 1}};
   }
 
+  ImageViewId RenderGraphBuilder::use_storage_image_array(ImageResourceId id, VkShaderStageFlags stages) {
+    auto pipeline_stages = get_pipeline_flags(stages);
+    const auto &desc = resources.get_info(id);
+    
+    ImageSubresourceState state {
+      pipeline_stages,
+      VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT,
+      VK_IMAGE_LAYOUT_GENERAL
+    };
+
+    for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
+      ImageSubresourceId subres {id, 0, layer};
+      tracking_state.add_input(resources, subres, state);
+    }
+    
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, 1, 0, desc.array_layers}};
+  }
+
   ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect) {
     const auto &desc = resources.get_info(id);
     return sample_image(id, stages, aspect, 0, desc.mip_levels, 0, desc.array_layers);
@@ -211,9 +229,10 @@ namespace rendergraph {
 
     auto &api_cmd = gpu.get_cmdbuff(); 
     RenderResources res {resources, gpu};
-
+    api_cmd.push_label("Rendergraph");
 #if RENDERGRAPH_USE_EVENTS
     for (uint32_t i = 0; i < tasks.size(); i++) {
+      api_cmd.push_label(tasks[i]->get_name().c_str());
       if (barriers.size() > i) {
         resolve_barrier(barriers, i, api_cmd.get_command_buffer());
       }
@@ -225,6 +244,7 @@ namespace rendergraph {
         barriers[i].release_event = event;
         api_cmd.signal_event(event, barriers[i].signal_mask);
       }
+      api_cmd.pop_label();
     }
 #else
     for (uint32_t i = 0; i < tasks.size(); i++) {
@@ -237,7 +257,8 @@ namespace rendergraph {
     }
 #endif
     tasks.clear();
-
+    api_cmd.pop_label();
+    
     if (!present_backbuffer) {
       gpu.submit(false);
       return;

@@ -367,6 +367,21 @@ namespace gpu {
     vkCmdSetEvent(cmd, event, stages);
   }
 
+  void CmdContext::push_label(const char *name) {
+    VkDebugUtilsLabelEXT label {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pNext = nullptr,
+        .pLabelName = name,
+        .color {0.f, 0.f, 0.f, 0.f}
+      };
+
+    vkCmdBeginDebugUtilsLabelEXT(cmd, &label);
+  }
+  
+  void CmdContext::pop_label() {
+    vkCmdEndDebugUtilsLabelEXT(cmd);
+  }
+
   TransferCmdPool::TransferCmdPool()
   {
     auto qinfo = app_main_queue();

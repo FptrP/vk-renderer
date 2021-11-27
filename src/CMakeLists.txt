@@ -32,6 +32,7 @@ add_executable(main
   gtao.cpp
   imgui_pass.cpp
   downsample_pass.cpp
+  trace_samples.cpp
   ssr.cpp
 
   scene/scene.cpp

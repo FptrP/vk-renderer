@@ -2,6 +2,7 @@
 #include <SDL2/SDL_vulkan.h>
 #include <vector>
 #include <iostream>
+#include <vector>
 #include <memory>
 
 #include "gpu/gpu.hpp"
@@ -18,6 +19,8 @@
 #include "downsample_pass.hpp"
 #include "ssr.hpp"
 #include "gtao.hpp"
+#include "trace_samples.hpp"
+#include "draw_directions.hpp"
 
 #define ENABLE_VALIDATION 1
 #define USE_RAY_QUERY 0
@@ -33,7 +36,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
 }
 
 struct AppInit {
-  AppInit(uint32_t width, uint32_t height) {
+  AppInit(uint32_t width, uint32_t height, bool enable_validation) {
     SDL_Init(SDL_INIT_EVERYTHING);
     window = SDL_CreateWindow("T", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_VULKAN);
 
@@ -45,9 +48,9 @@ struct AppInit {
 
     gpu::InstanceConfig instance_info {};
     instance_info.api_version = VK_API_VERSION_1_2;
-#if ENABLE_VALIDATION
-    instance_info.layers = {"VK_LAYER_KHRONOS_validation"};
-#endif
+    if (enable_validation) {
+      instance_info.layers = {"VK_LAYER_KHRONOS_validation"};
+    }
     instance_info.extensions.insert(ext.begin(), ext.end());
     instance_info.extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
@@ -76,8 +79,21 @@ struct AppInit {
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
 
-int main() {
-  AppInit app_init {WIDTH, HEIGHT};
+int main(int argc, char **argv) {
+  bool enable_validation = true;
+  
+  std::vector<std::string> params;
+  params.reserve(argc - 1);
+  for (int i = 1; i < argc; i++) {
+    params.push_back(argv[i]);
+  }
+
+  if (params.size() > 0 && params[0] == "--disable-validation") {
+    std::cout << "validation disabled\n";
+    enable_validation = false;
+  }
+  
+  AppInit app_init {WIDTH, HEIGHT, enable_validation};
 
   gpu::create_program("triangle", {
     {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/shader_vert.spv", "main"},
@@ -148,6 +164,17 @@ int main() {
     {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssr/shader_frag.spv", "main"}
   });
 
+  gpu::create_program("rotations", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/rotations/rot_comp.spv", "main"}
+  });
+
+  gpu::create_program("deinterleave_depth", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave_comp.spv", "main"}
+  });
+
+  gpu::create_program("main_deinterleaved", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/main_deinterleaved_comp.spv", "main"}
+  });
 
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
@@ -162,6 +189,8 @@ int main() {
   acceleration_struct.build(transfer_pool, scene);
 #endif
 
+  SamplesMarker::init(render_graph, WIDTH, HEIGHT);
+  
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY};
 
@@ -191,6 +220,7 @@ int main() {
   auto ticks = SDL_GetTicks();
   
   clear_depth(render_graph, gbuffer.prev_depth);
+
   glm::mat4 prev_mvp = projection * camera.get_view_mat();
 
   while (!quit) {
@@ -214,6 +244,9 @@ int main() {
     shading_pass.update_params(camera.get_view_mat(), shadow_mvp, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
     
     gpu_transfer::process_requests(render_graph);
+
+    SamplesMarker::clear(render_graph);
+
     scene_renderer.draw(render_graph, gbuffer);
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     downsample_depth(render_graph, gbuffer.depth);
@@ -224,8 +257,12 @@ int main() {
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-    gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    gtao.deinterleave_depth(render_graph, gbuffer.depth);
+    //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    gtao.add_main_pass_deinterleaved(render_graph, gtao_params, gbuffer.normal);
     //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
+    
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
@@ -235,7 +272,8 @@ int main() {
       glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
     });
 
-    //shading_pass.draw(render_graph, gbuffer, shadows_tex, ssao_texture, render_graph.get_backbuffer());
+    //shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, render_graph.get_backbuffer());
+    //add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler, DrawTex::ShowAll);
     add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     add_present_subpass(render_graph);
     render_graph.submit();

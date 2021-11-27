@@ -4,6 +4,8 @@
 #include <cstring>
 #include <iostream>
 
+#include "trace_samples.hpp"
+
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
   gpu::ImageInfo info {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -24,7 +26,13 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, boo
   
   info.format = VK_FORMAT_R16G16_SFLOAT;
   accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
-  
+
+  info.format = VK_FORMAT_R32_SFLOAT;
+  info.width = width/4;
+  info.height = height/4;
+  info.array_layers = 16;
+  deinterleaved_depth = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
+
   main_pipeline = gpu::create_compute_pipeline();
   main_pipeline.set_program("gtao_compute_main");
 
@@ -51,6 +59,12 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, boo
   accumulate_pipeline = gpu::create_compute_pipeline();
   accumulate_pipeline.set_program("gtao_accumulate");
 
+  deinterleave_pipeline = gpu::create_compute_pipeline();
+  deinterleave_pipeline.set_program("deinterleave_depth");
+
+  main_deinterleaved_pipeline = gpu::create_compute_pipeline();
+  main_deinterleaved_pipeline.set_program("main_deinterleaved");
+
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 }
 
@@ -67,6 +81,10 @@ void GTAO::add_main_pass(
     rendergraph::ImageViewId norm;
   };
 
+  const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
+  float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
+  base_angle += rand()/float(RAND_MAX) - 0.5;
+
   graph.add_task<PassData>("GTAO_main",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
@@ -80,16 +98,17 @@ void GTAO::add_main_pass(
       auto set = resources.allocate_set(main_pipeline, 0);
     
       gpu::write_set(set,
-        gpu::UBOBinding {0, cmd.get_ubo_pool(), block},
-        gpu::TextureBinding {1, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::UBOBinding {1, cmd.get_ubo_pool(), block},
         gpu::TextureBinding {2, resources.get_view(input.norm), sampler},
         gpu::StorageTextureBinding {3, resources.get_view(input.out)}
-        );
+      );
 
       const auto &extent = resources.get_image(input.out).get_extent();
 
       cmd.bind_pipeline(main_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
+      cmd.push_constants_compute(0, sizeof(base_angle), &base_angle);
       cmd.dispatch(extent.width/8, extent.height/4, 1);
     });
 
@@ -292,6 +311,9 @@ void GTAO::add_main_pass_graphics(
     rendergraph::ImageViewId rt;
     rendergraph::ImageViewId depth;
     rendergraph::ImageViewId norm;
+  #if GTAO_TRACE_SAMPLES
+    rendergraph::ImageViewId samples_map;
+  #endif
   };
 
   const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
@@ -307,6 +329,9 @@ void GTAO::add_main_pass_graphics(
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.norm = builder.sample_image(normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.rt = builder.use_color_attachment(raw, 0, 0);
+    #if GTAO_TRACE_SAMPLES
+      input.samples_map = builder.use_storage_image(SamplesMarker::get_image(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, 0);
+    #endif
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       auto block = cmd.allocate_ubo<GTAOParams>();
@@ -319,6 +344,10 @@ void GTAO::add_main_pass_graphics(
         gpu::UBOBinding {1, cmd.get_ubo_pool(), block},
         gpu::TextureBinding {2, resources.get_view(input.norm), sampler});
       
+      #if GTAO_TRACE_SAMPLES
+        gpu::write_set(set, 
+          gpu::StorageTextureBinding {7, resources.get_view(input.samples_map)});
+      #endif
       const auto &image_info = resources.get_image(input.rt).get_info();
       auto w = image_info.width;
       auto h = image_info.height;
@@ -352,7 +381,6 @@ static gpu::Buffer create_random_vectors(uint32_t vectors_count) {
     }
 
     dir /= length;
-    //std::cout << dir.z << "\n";
     random_vectors.push_back(dir);
   }
 
@@ -363,4 +391,85 @@ static gpu::Buffer create_random_vectors(uint32_t vectors_count) {
   std::memcpy(vec_buffer.get_mapped_ptr(), random_vectors.data(), buffer_size);
 
   return vec_buffer;
+}
+
+void GTAO::deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId depth) {
+  struct PassData {
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId out;
+  };
+
+  graph.add_task<PassData>("GTAO_deinterleave",
+    [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.out = builder.use_storage_image_array(deinterleaved_depth, VK_SHADER_STAGE_COMPUTE_BIT);
+    },
+    [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+
+      auto set = resources.allocate_set(deinterleave_pipeline, 0);
+    
+      gpu::write_set(set,
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::StorageTextureBinding {1, resources.get_view(input.out)}
+      );
+
+      const auto &extent = resources.get_image(input.depth).get_extent();
+
+      cmd.bind_pipeline(deinterleave_pipeline);
+      cmd.bind_descriptors_compute(0, {set}, {});
+      cmd.dispatch(extent.width/8, extent.height/4, 1);
+    });
+}
+
+void GTAO::add_main_pass_deinterleaved(
+    rendergraph::RenderGraph &graph,
+    const GTAOParams &params,
+    rendergraph::ImageResourceId normal)
+{
+  struct PushConstants {
+    uint32_t layer;
+    float angle_offset;
+  };
+
+  struct PassData {
+    rendergraph::ImageViewId out;
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId norm;
+  };
+
+  const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
+  float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
+  base_angle += rand()/float(RAND_MAX) - 0.5;
+
+  frame_count += 1;
+
+  graph.add_task<PassData>("GTAO_deinterleaved",
+    [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.sample_image(deinterleaved_depth, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.norm = builder.sample_image(normal, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.out = builder.use_storage_image(raw, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      auto block = cmd.allocate_ubo<GTAOParams>();
+      *block.ptr = params;
+
+      auto set = resources.allocate_set(main_deinterleaved_pipeline, 0);
+    
+      gpu::write_set(set,
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::UBOBinding {1, cmd.get_ubo_pool(), block},
+        gpu::TextureBinding {2, resources.get_view(input.norm), sampler},
+        gpu::StorageTextureBinding {3, resources.get_view(input.out)}
+      );
+      const auto &info = resources.get_image(input.depth);
+      const auto &extent = info.get_extent();
+
+      cmd.bind_pipeline(main_deinterleaved_pipeline);
+      cmd.bind_descriptors_compute(0, {set}, {block.offset});
+      for (uint32_t i = 0; i < info.get_array_layers(); i++) {
+        PushConstants pc {i, base_angle};
+        cmd.push_constants_compute(0, sizeof(pc), &pc);
+        cmd.dispatch(extent.width/8, extent.height/4, 1);
+      }
+    });
 }

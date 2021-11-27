@@ -24,6 +24,7 @@ namespace rendergraph {
     ImageViewId use_color_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId use_depth_attachment(ImageResourceId id, uint32_t mip, uint32_t layer);
     ImageViewId use_storage_image(ImageResourceId id, VkShaderStageFlags stages, uint32_t mip, uint32_t layer);
+    ImageViewId use_storage_image_array(ImageResourceId id, VkShaderStageFlags stages);
 
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect = 0);
@@ -77,6 +78,7 @@ namespace rendergraph {
     virtual void write_commands(RenderResources &, gpu::CmdContext &) = 0;
     virtual ~BaseTask() {}
 
+    const std::string &get_name() const { return name; }
     std::string name;
   };
 
