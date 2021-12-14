@@ -15,6 +15,7 @@ layout (set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 layout (set = 0, binding = 3, r16f) uniform writeonly image2D gtao_out;
 
 layout (push_constant) uniform PushConstants {
+  int pattern_n;
   uint layer;
   float angle_offset;
 };
@@ -35,9 +36,13 @@ float gtao_camera_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count);
 
 layout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
 void main() {
-  ivec2 tex_size = 4 * ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+  const int scale = (1 << pattern_n);
+  const int scale_mod = scale - 1;
+
+  ivec2 tex_size = scale * ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
   ivec2 pixel_pos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
-  pixel_pos = 4 * pixel_pos + ivec2(layer & 3, (layer >> 2) & 3);
+  pixel_pos = scale * pixel_pos + ivec2(layer & scale_mod, (layer >> pattern_n) & scale_mod);
+
   vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
 
   float occlusion = gtao_camera_space(pixel_pos, screen_uv, 1);

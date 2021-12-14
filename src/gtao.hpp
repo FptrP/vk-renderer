@@ -33,7 +33,7 @@ struct GTAOReprojection {
 };
 
 struct GTAO {
-  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query);
+  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, int pattern_n = 2);
 
   void add_main_pass(
     rendergraph::RenderGraph &graph,
@@ -92,9 +92,11 @@ private:
   gpu::ComputePipeline filter_pipeline;
   gpu::ComputePipeline reproject_pipeline;
   gpu::ComputePipeline accumulate_pipeline;
+
   gpu::ComputePipeline deinterleave_pipeline;
   gpu::ComputePipeline main_deinterleaved_pipeline;
-  
+  int deinterleave_n = 2;
+
   gpu::Buffer random_vectors;
   
   uint32_t frame_count = 0;

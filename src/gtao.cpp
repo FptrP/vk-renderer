@@ -13,7 +13,9 @@ rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph
 
 static gpu::Buffer create_random_vectors(uint32_t vectors_count);
 
-GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query) {
+GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, int pattern_n)
+  : deinterleave_n {pattern_n}
+{
   gpu::ImageInfo info {VK_FORMAT_R16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   auto usage = VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
@@ -27,10 +29,12 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, boo
   info.format = VK_FORMAT_R16G16_SFLOAT;
   accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
 
+  uint32_t pattern_step = 1u << (uint32_t)pattern_n;
+
   info.format = VK_FORMAT_R32_SFLOAT;
-  info.width = width/4;
-  info.height = height/4;
-  info.array_layers = 16;
+  info.width = width/pattern_step;
+  info.height = height/pattern_step;
+  info.array_layers = pattern_step * pattern_step;
   deinterleaved_depth = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
 
   main_pipeline = gpu::create_compute_pipeline();
@@ -417,6 +421,7 @@ void GTAO::deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::Imag
 
       cmd.bind_pipeline(deinterleave_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});
+      cmd.push_constants_compute(0, sizeof(deinterleave_n), &deinterleave_n);
       cmd.dispatch(extent.width/8, extent.height/4, 1);
     });
 }
@@ -427,6 +432,7 @@ void GTAO::add_main_pass_deinterleaved(
     rendergraph::ImageResourceId normal)
 {
   struct PushConstants {
+    int pattern_n;
     uint32_t layer;
     float angle_offset;
   };
@@ -467,7 +473,7 @@ void GTAO::add_main_pass_deinterleaved(
       cmd.bind_pipeline(main_deinterleaved_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
       for (uint32_t i = 0; i < info.get_array_layers(); i++) {
-        PushConstants pc {i, base_angle};
+        PushConstants pc {deinterleave_n, i, base_angle};
         cmd.push_constants_compute(0, sizeof(pc), &pc);
         cmd.dispatch(extent.width/8, extent.height/4, 1);
       }

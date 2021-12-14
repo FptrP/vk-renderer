@@ -172,6 +172,10 @@ int main(int argc, char **argv) {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave_comp.spv", "main"}
   });
 
+  /*gpu::create_program("deinterleave_depth2x2", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave2x2_comp.spv", "main"}
+  });*/
+
   gpu::create_program("main_deinterleaved", {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/main_deinterleaved_comp.spv", "main"}
   });
@@ -192,7 +196,7 @@ int main(int argc, char **argv) {
   SamplesMarker::init(render_graph, WIDTH, HEIGHT);
   
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
-  GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY};
+  GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY, 1};
 
   auto ssr_texture = create_ssr_tex(render_graph, WIDTH, HEIGHT);
 
@@ -259,7 +263,7 @@ int main(int argc, char **argv) {
 
     //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     gtao.deinterleave_depth(render_graph, gbuffer.depth);
-    //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     gtao.add_main_pass_deinterleaved(render_graph, gtao_params, gbuffer.normal);
     //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     
