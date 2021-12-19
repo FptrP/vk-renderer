@@ -197,12 +197,18 @@ namespace scene {
       uint32_t count = scene_mt->GetTextureCount(aiTextureType_DIFFUSE);
 
       MaterialDesc mat {};
+      int mode;
+      scene_mt->Get(AI_MATKEY_TEXFLAGS(aiTextureType_DIFFUSE, 0), mode);
 
       if (count) {
         aiString path;
         scene_mt->GetTexture(aiTextureType_DIFFUSE, 0, &path);
         mat.albedo_path = path.C_Str();
-      
+
+        if (mode == aiTextureFlags_UseAlpha) {
+          std::cout << mat.albedo_path << "\n";
+        }
+
         if (mat.albedo_path.length()) {
           mat.albedo_path = model_path + mat.albedo_path;
         }
@@ -218,6 +224,7 @@ namespace scene {
       } 
 
       Material material {};
+      material.clip_alpha = (mode == aiTextureFlags_UseAlpha);
       material.albedo_tex_index = load_scene_image(transfer_pool, mat.albedo_path, loaded_images, out_scene);
       material.metalic_roughness_index = load_scene_image(transfer_pool, mat.mr_path, loaded_images, out_scene);
       out_scene.materials.push_back(material);

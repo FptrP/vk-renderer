@@ -33,6 +33,7 @@ add_executable(main
   imgui_pass.cpp
   downsample_pass.cpp
   trace_samples.cpp
+  screen_trace.cpp
   ssr.cpp
 
   scene/scene.cpp

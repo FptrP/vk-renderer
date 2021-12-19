@@ -108,17 +108,6 @@ void SceneRenderer::update_scene(const glm::mat4 &camera, const glm::mat4 &proje
   
   node_process(*target.root, draw_calls, transforms, identity);
 
-  /*for (const auto &mat : transforms) {
-    for (int y = 0; y < 3; y++) {
-      for (int x = 0; x < 4; x++) {
-        std::cout << mat[y][x] << " ";
-      }
-
-      std::cout << "\n";
-    }
-    std::cout << "\n";
-  }*/
-
   GbufConst consts {
     camera,
     projection,
@@ -136,6 +125,7 @@ struct PushData {
   uint32_t transform_index;
   uint32_t albedo_index;
   uint32_t mr_index;
+  uint32_t flags;
 };
 
 void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer) {
@@ -197,7 +187,8 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
         pc.transform_index = draw_call.transform;
         pc.albedo_index = material.albedo_tex_index;
         pc.mr_index = material.metalic_roughness_index;
-
+        pc.flags = material.clip_alpha? 0xff : 0;
+        
         cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
         cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       }

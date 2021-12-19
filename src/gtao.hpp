@@ -4,7 +4,7 @@
 #include "scene/camera.hpp"
 #include "rendergraph/rendergraph.hpp"
 
-#define GTAO_TRACE_SAMPLES 1
+#define GTAO_TRACE_SAMPLES 0
 
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height);
 

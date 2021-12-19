@@ -24,10 +24,16 @@ layout (push_constant) uniform push_data {
   uint transform_index;
   uint albedo_index;
   uint mr_index;
+  uint flags;
 };
 
 void main() {
   out_albedo = texture(sampler2D(material_textures[albedo_index], main_sampler), in_uv);
+  
+  if (out_albedo.a == 0) {
+    discard;
+  }
+
   out_normal = vec4(encode_normal(in_normal), 0, 0);
   out_material = texture(sampler2D(material_textures[mr_index], main_sampler), in_uv);
 }

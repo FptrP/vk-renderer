@@ -89,6 +89,8 @@ void GTAO::add_main_pass(
   float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
   base_angle += rand()/float(RAND_MAX) - 0.5;
 
+  frame_count += 1;
+  
   graph.add_task<PassData>("GTAO_main",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);

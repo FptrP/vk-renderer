@@ -21,6 +21,7 @@
 #include "gtao.hpp"
 #include "trace_samples.hpp"
 #include "draw_directions.hpp"
+#include "screen_trace.hpp"
 
 #define ENABLE_VALIDATION 1
 #define USE_RAY_QUERY 0
@@ -176,6 +177,18 @@ int main(int argc, char **argv) {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave2x2_comp.spv", "main"}
   });*/
 
+  gpu::create_program("screen_trace_main", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/trace_comp.spv", "main"}
+  });
+
+  gpu::create_program("screen_trace_filter", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/filter_comp.spv", "main"}
+  });
+  
+  gpu::create_program("screen_trace_accumulate", {
+    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/accumulate_comp.spv", "main"}
+  });
+
   gpu::create_program("main_deinterleaved", {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/main_deinterleaved_comp.spv", "main"}
   });
@@ -197,6 +210,7 @@ int main(int argc, char **argv) {
   
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY, 1};
+  ScreenSpaceTrace screen_trace {render_graph, WIDTH, HEIGHT};
 
   auto ssr_texture = create_ssr_tex(render_graph, WIDTH, HEIGHT);
 
@@ -218,7 +232,7 @@ int main(int argc, char **argv) {
 
   scene::Camera camera({0.f, 1.f, -1.f});
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
-  glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{0, 2, -1}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
+  glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{-1.85867, 5.81832, -0.247114}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
 
   bool quit = false;
   auto ticks = SDL_GetTicks();
@@ -260,16 +274,19 @@ int main(int argc, char **argv) {
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
+    ScreenTraceParams trace_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
     //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    gtao.deinterleave_depth(render_graph, gbuffer.depth);
-    gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    gtao.add_main_pass_deinterleaved(render_graph, gtao_params, gbuffer.normal);
+    //gtao.deinterleave_depth(render_graph, gbuffer.depth);
+    //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
+    //gtao.add_main_pass_deinterleaved(render_graph, gtao_params, gbuffer.normal);
     //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
-    
-    gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
+    screen_trace.add_main_pass(render_graph, trace_params, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material);
+    screen_trace.add_filter_pass(render_graph, trace_params, gbuffer.depth);
+    screen_trace.add_accumulate_pass(render_graph, trace_params, gbuffer.depth, gbuffer.prev_depth);
+    //gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
-    gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
+    //gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
 
     add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, ssr_texture, SSRParams {
       normal_mat,
@@ -277,8 +294,8 @@ int main(int argc, char **argv) {
     });
 
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, render_graph.get_backbuffer());
-    //add_backbuffer_subpass(render_graph, gbuffer.albedo, sampler, DrawTex::ShowAll);
-    add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
+    //add_backbuffer_subpass(render_graph, ssr_texture, sampler, DrawTex::ShowAll);
+    add_backbuffer_subpass(render_graph, screen_trace.accumulated, sampler, DrawTex::ShowAll);
     add_present_subpass(render_graph);
     render_graph.submit();
 

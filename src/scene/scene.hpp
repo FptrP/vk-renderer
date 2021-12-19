@@ -34,6 +34,7 @@ namespace scene {
   struct Material {
     uint32_t albedo_tex_index = INVALID_TEXTURE;
     uint32_t metalic_roughness_index = INVALID_TEXTURE;
+    bool clip_alpha = false;
   };
 
   struct Node {

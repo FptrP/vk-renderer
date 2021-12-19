@@ -29,6 +29,7 @@ layout (push_constant) uniform push_data {
   uint transform_index;
   uint albedo_index;
   uint mr_index;
+  uint flags;
 };
 
 void main() {

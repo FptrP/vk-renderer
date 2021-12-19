@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <SDL2/SDL.h>
+#include <iostream>
 
 namespace scene {
 
@@ -62,6 +63,11 @@ namespace scene {
 		      case SDLK_f:
 		        if (val) mouse_capture = !mouse_capture;
 		        break;
+					case SDLK_SPACE:
+						if (e.type == SDL_KEYDOWN) {
+							std::cout << "CameraPos : " << pos.x << " " << pos.y << " " << pos.z << "\n";
+						}
+						break;
 		    }
 	    }
 
