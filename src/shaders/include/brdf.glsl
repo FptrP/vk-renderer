@@ -1,7 +1,7 @@
 #ifndef BRDF_GLSL_INCLUDED
 #define BRDF_GLSL_INCLUDED
 
-const float PI = 3.14159265359;
+const float PI = 3.1415926535897932384626433832795;
 
 vec3 fresnelSchlick(float cos_theta, vec3 F0) {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);

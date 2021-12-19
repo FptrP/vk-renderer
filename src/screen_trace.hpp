@@ -1,6 +1,7 @@
 #ifndef SCREEN_TRACE_HPP_INCLUDED
 #define SCREEN_TRACE_HPP_INCLUDED
 
+#include <random>
 #include "scene/camera.hpp"
 #include "rendergraph/rendergraph.hpp"
 
@@ -39,7 +40,8 @@ struct ScreenSpaceTrace {
   rendergraph::ImageResourceId accumulated;
   //rendergraph::ImageResourceId output;
 private:
-  
+  std::uniform_real_distribution<float> random_floats {0.0, 1.0};
+  std::default_random_engine generator;
 
   gpu::ComputePipeline trace_pipeline;
   gpu::ComputePipeline filter_pipeline;

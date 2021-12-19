@@ -1,7 +1,7 @@
 #version 460
 #include <gbuffer_encode.glsl>
 #include <screen_trace.glsl>
-
+#include <brdf.glsl>
 const int TILE_SIZE = 8;
 const int THREAD_COUNT = TILE_SIZE * TILE_SIZE; 
 
@@ -13,7 +13,7 @@ layout (set = 0, binding = 4, rgba16f) uniform image2D OUTPUT_TEX;
 
 layout (set = 0, binding = 5) uniform Params {
   mat4 camera_normal;
-  uint random;
+  float random_offset;
   float angle_offset;
   float fovy;
   float aspect;
@@ -32,9 +32,13 @@ void main() {
   vec4 result = gtao_camera_space(pixel_pos, screen_uv, 1);
   imageStore(OUTPUT_TEX, pixel_pos, result);
 }
-const float PI = 3.1415926535897932384626433832795;
-const float MAX_THIKNESS = 0.1;
+
+const float MAX_THIKNESS = 0.2;
 const int SAMPLES = 20;
+
+float rand(vec2 co){
+  return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
 
 void integrate_direction(in vec2 start, in vec3 camera_start, in vec2 dir, int samples_count, in vec3 v, in vec3 normal, inout float h_cos, inout vec3 radiance) {
   h_cos = -1.0;
@@ -67,6 +71,80 @@ void integrate_direction(in vec2 start, in vec3 camera_start, in vec2 dir, int s
   radiance = (radiance_samples > 0)? (radiance/samples_count) : vec3(0);
 }
 
+/*
+bool simple_raymarch(in sampler2D depth_tex, vec3 start, vec3 end, const int lod, out vec3 out_ray) {
+  vec3 delta = end - start;
+  vec2 tex_size = textureSize(depth_tex, lod);
+
+  ivec2 pixel_dist = ivec2(tex_size * abs(delta.xy));
+  int steps = max(pixel_dist.x, pixel_dist.y);
+  vec3 vec_step = delta/steps;
+  
+  for (int i = 2; i < steps - 1; i++) {
+    vec3 p = start + vec_step * i;
+    float depth = texelFetch(depth_tex, ivec2(floor(p.xy * tex_size)), lod).x;
+
+    if (p.z - 0.00001 > depth) {
+      
+      if (p.z - depth > 0.01) {
+        return false;  
+      }
+
+      out_ray = p;
+      return true;
+    }
+  }
+
+  return false;
+}
+*/
+
+void trace_ray(vec3 start, vec3 end, in vec3 camera_start, int samples_count, in vec3 v, inout float h_cos, inout vec3 radiance) {
+  vec3 delta = end - start;
+  vec2 tex_size = textureSize(DEPTH_TEX, 0);
+  bool hit = false;
+  bool hor_stop = false;
+  h_cos = -1.0;
+  radiance = vec3(0);
+  float previous_z = camera_start.z;
+
+  ivec2 pixel_dist = ivec2(tex_size * abs(delta.xy));
+  int steps = max(pixel_dist.x, pixel_dist.y);
+  vec3 vec_step = delta/steps;
+  
+  for (int i = 1; i < steps - 1; i++) {
+    vec3 p = start + vec_step * i;
+    
+    if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) {
+      return;
+    }
+    
+    float depth = texelFetch(DEPTH_TEX, ivec2(floor(p.xy * tex_size)), 0).x;
+
+    if (p.z - 0.00001 > depth) { //test reflection hit
+      if (p.z - depth <= 0.01 && !hit) {
+        radiance = textureLod(COLOR_TEX, p.xy, 0).rgb; 
+        hit = true;
+      }
+    }
+    vec2 pixel_dist = abs(p.xy - start.xy) * tex_size;
+
+    vec3 sample_pos = reconstruct_view_vec(p.xy, depth, fovy, aspect, znear, zfar);
+    
+    if (sample_pos.z > previous_z + MAX_THIKNESS) {
+      hor_stop = true;
+    }
+
+    previous_z = sample_pos.z;
+    vec3 sample_offset = normalize(sample_pos - camera_start);
+
+    float sample_cos = dot(v, sample_offset);
+    if (sample_cos >= h_cos && max(pixel_dist.x, pixel_dist.y) < 32 && !hor_stop) { //visible pixel
+      h_cos = sample_cos;
+    }
+  }
+}
+
 float gtao_direction(in ivec2 pos) { // -> full rotation every 4 pixels
   return (1.0 / 16.0) * ((((pos.x + pos.y) & 3) << 2) + (pos.x & 3));
 }
@@ -86,11 +164,19 @@ vec4 gtao_camera_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
   float sum = 0.f;
   vec3 radiance_sum = vec3(0);
 
+  float random_rotation = 0.5 * PI * rand(screen_uv + vec2(random_offset, 0));
+
   for (int dir_index = 0; dir_index < dirs_count; dir_index++) {
     float angle = 2 * PI * (base_angle + float(dir_index)/float(dirs_count));
 
     vec2 sample_direction = dir_radius * vec2(cos(angle), sin(angle));
     vec3 sample_end_pos = reconstruct_view_vec(screen_uv + sample_direction, frag_depth, fovy, aspect, znear, zfar);
+    
+    vec3 bitangent = normalize(cross(sample_end_pos - camera_pos, camera_normal)); 
+    vec3 tangent = normalize(cross(camera_normal, bitangent)); 
+
+    vec3 ray_direction = camera_normal * cos(random_rotation) + tangent * sin(random_rotation);
+    vec3 end_point = project_view_vec(camera_pos + 2.0 * ray_direction, fovy, aspect, znear, zfar);
 
     vec3 slice_normal = normalize(cross(w0, -sample_end_pos));
     vec3 normal_projected = camera_normal - dot(camera_normal, slice_normal) * slice_normal;
@@ -98,12 +184,12 @@ vec4 gtao_camera_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
 
     float h_cos;
     vec3 dir_radiance;
-    integrate_direction(screen_uv, camera_pos, sample_direction, SAMPLES, w0, camera_normal, h_cos, dir_radiance);
-
+    //integrate_direction(screen_uv, camera_pos, sample_direction, SAMPLES, w0, camera_normal, h_cos, dir_radiance);
+    trace_ray(vec3(screen_uv, frag_depth), end_point, camera_pos, SAMPLES, w0, h_cos, dir_radiance);
     float h = acos(h_cos);
     h = min(n + min(h - n, PI/2.0), h);
     sum += length(normal_projected) * 0.25 * max(-cos(2 * h - n) + cos(n) + 2*h*sin(n), 0);
-    radiance_sum += dir_radiance;
+    radiance_sum += dir_radiance * DistributionGGX(camera_normal, normalize(w0 + ray_direction), 0.5);
   }
   float norm_coef = 2.0/float(dirs_count);
 

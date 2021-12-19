@@ -30,7 +30,7 @@ void ScreenSpaceTrace::add_main_pass(
 {
   struct GpuParams {
     glm::mat4 camera_normal;
-    uint32_t random;
+    float random_offset;
     float angle_offset;
     float fovy;
     float aspect;
@@ -48,8 +48,10 @@ void ScreenSpaceTrace::add_main_pass(
 
   const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
   float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
-  base_angle += rand()/float(RAND_MAX) - 0.5;
+  base_angle += random_floats(generator) - 0.5;
   frame_count += 1;
+
+  float random_offset = random_floats(generator);
 
   graph.add_task<PassData>("ScreenTrace",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
@@ -66,7 +68,7 @@ void ScreenSpaceTrace::add_main_pass(
       block.ptr->aspect = params.aspect;
       block.ptr->fovy = params.fovy;
       block.ptr->znear = params.znear;
-      block.ptr->random = 0;
+      block.ptr->random_offset = random_offset;
       block.ptr->zfar = params.zfar;
 
       auto set = resources.allocate_set(trace_pipeline, 0);
@@ -106,7 +108,7 @@ void ScreenSpaceTrace::add_filter_pass(
 
   GpuParams push_constants {params.znear, params.zfar};
 
-  graph.add_task<PassData>("ScreenTrace",
+  graph.add_task<PassData>("ScreenTraceFilter",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.raw = builder.sample_image(raw, VK_SHADER_STAGE_COMPUTE_BIT);
@@ -152,7 +154,7 @@ void ScreenSpaceTrace::add_accumulate_pass(
 
   GpuParams push_constants {params.fovy, params.aspect, params.znear, params.zfar};
 
-  graph.add_task<PassData>("ScreenTrace",
+  graph.add_task<PassData>("ScreenTraceAccumulate",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
