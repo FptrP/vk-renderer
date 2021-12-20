@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, render_graph.get_backbuffer());
     //add_backbuffer_subpass(render_graph, ssr_texture, sampler, DrawTex::ShowAll);
     add_backbuffer_subpass(render_graph, screen_trace.accumulated, sampler, DrawTex::ShowAll);
+    
     add_present_subpass(render_graph);
     render_graph.submit();
 
