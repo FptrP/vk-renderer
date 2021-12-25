@@ -224,6 +224,9 @@ void calc_tangent_space(vec3 normal, inout vec3 tangent, inout vec3 bitangent) {
   bitangent = cross(normal, tangent);
 }
 
+shared vec3 RAY_HIT_POS[TILE_SIZE * TILE_SIZE];
+shared vec3 RAY_HIT_COLOR[TILE_SIZE * TILE_SIZE];
+
 vec4 trace_tangent_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
   vec3 screen_pos = vec3(screen_uv, textureLod(DEPTH_TEX, screen_uv, 0).r);
   if (screen_pos.z >= 1.f) {
@@ -251,7 +254,7 @@ vec4 trace_tangent_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
     screen_dir = screen_dir/length(screen_dir.xy) * max(ao_dir_radius.x, ao_dir_radius.y);
     //screen_dir = normalize(screen_dir - screen_pos.xy) ;
     bool ray_hit = false;
-    vec2 hit_pos = vec2(0);
+    vec3 hit_pos = vec3(0);
 
     float h_cos = 0;
     float previous_z = camera_pos.z;
@@ -261,12 +264,12 @@ vec4 trace_tangent_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
       vec3 camera_sample = reconstruct_view_vec(tc.xy, tc_depth, fovy, aspect, znear, zfar);
       //vec3 camera_tc = reconstruct_view_vec(tc.xy, tc.z, fovy, aspect, znear, zfar);
 
-      if (camera_sample.z > previous_z + MAX_THIKNESS) {
+      if (tc.x < 0 || tc.x > 1 || tc.y < 0 || tc.y > 1 || camera_sample.z > previous_z + MAX_THIKNESS) {
         break;
       }
 
       if (!ray_hit && tc.z - 1e-6 > tc_depth) {
-        hit_pos = tc.xy;
+        hit_pos = tc;
         ray_hit = true;
       }
 
@@ -275,38 +278,67 @@ vec4 trace_tangent_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
     }
 
     h_cos = min(h_cos, 1);
-    result.a += 0.5 * sqrt(1 - h_cos * h_cos);
-
+    float h = acos(h_cos);
+    //result.a += 0.5 * sqrt(1 - h_cos * h_cos);
+    result.a += 0.25 * (1 - cos(2 * h));
     //Additional trace
     const int FAR_SAMPLES = 8;
     vec3 start_ray = screen_pos + screen_dir;
-    screen_dir *= 3;
+    screen_dir *= 2;
 
     for (int i = 0; i < FAR_SAMPLES; i++) {
       vec3 tc = start_ray + (float(i)/float(FAR_SAMPLES)) * screen_dir;
       float tc_depth = textureLod(DEPTH_TEX, tc.xy, 0).r;
       float camera_z = linearize_depth2(tc_depth, znear, zfar);
 
-      if (tc.x < 0 || tc.x > 1 || tc.y < 0 || tc.y > 1 || camera_z > previous_z + 0.3) {
+      if (tc.x < 0 || tc.x > 1 || tc.y < 0 || tc.y > 1 || camera_z > previous_z + 0.1) {
         break;
       }
 
       if (!ray_hit && tc.z - 1e-6 > tc_depth) {
-        hit_pos = tc.xy;
+        hit_pos = tc;
         ray_hit = true;
       }
       previous_z = camera_z;
     }
 
-    if (ray_hit) {
-      vec3 hit_normal = sample_normal(hit_pos);
-      if (dot(hit_normal, camera_normal) < 0) {
-        result.xyz += texture(COLOR_TEX, hit_pos.xy).rgb * DistributionGGX(camera_normal, normalize(-normalize(camera_pos) + camera_sample_dir), 0.8) * max(dot(camera_normal, camera_sample_dir), 0);
+    int index = int(gl_LocalInvocationID.y * TILE_SIZE + gl_LocalInvocationID.x);
+    vec3 hit_normal = ray_hit? sample_normal(hit_pos.xy) : vec3(0);
+    ray_hit = ray_hit && (dot(camera_normal, hit_normal) < 0);
+    RAY_HIT_POS[index] = ray_hit? hit_pos : vec3(-1, -1, -1);
+    RAY_HIT_COLOR[index] = ray_hit? texture(COLOR_TEX, hit_pos.xy).rgb : vec3(0);
+    memoryBarrierShared();
+    //barrier();
+
+    int samples_count = 0;
+    vec3 W0 = -normalize(camera_pos);
+    float weight = 0.f;
+    float roughness = texture(MATERIAL_TEX, screen_pos.xy).g;
+    vec3 accum = vec3(0);
+
+    for (int x = int(gl_LocalInvocationID.x) - 1; x <= int(gl_LocalInvocationID.x) + 1; x++) {
+      for (int y = int(gl_LocalInvocationID.y) - 1; y <= int(gl_LocalInvocationID.y) + 1; y++) {
+        if (x >= 0 && x < TILE_SIZE && y >= 0 && y < TILE_SIZE) {
+          int index = y * TILE_SIZE + x;
+          vec3 ray_hit = RAY_HIT_POS[index];
+          if (ray_hit.z >= 0) {
+            vec3 camera_hit_pos = reconstruct_view_vec(ray_hit.xy, ray_hit.z, fovy, aspect, znear, zfar);
+            vec3 L = normalize(camera_hit_pos - camera_pos);
+            vec3 H = normalize(W0 + L);
+
+            float w = DistributionGGX(camera_normal, H, roughness) * max(dot(camera_normal, L), 0); 
+            weight += w;
+            accum += RAY_HIT_COLOR[index] * w;
+            samples_count++;
+          }
+        }
       }
     }
 
+    result.xyz += (weight > 0)? (accum/weight) : vec3(0);
   }
 
-  result.a *= 2/float(dirs_count);
+  result.a *= 2/float(dirs_count); 
+  result.rgb /= float(dirs_count);
   return result;
 }

@@ -121,7 +121,8 @@ namespace rendergraph {
     void submit();
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
-
+    uint32_t get_frame_index() const { return gpu.get_frame_index(); }
+    
     ImageResourceId create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
     ImageResourceId create_image(const ImageDescriptor &desc);
     BufferResourceId create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage);

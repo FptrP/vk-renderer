@@ -63,7 +63,8 @@ namespace gpu {
     void create(VmaMemoryUsage memory, uint64_t buffer_size, VkBufferUsageFlags usage);
     void close();
     void flush(uint64_t offset = 0, uint64_t size = VK_WHOLE_SIZE);
-
+    void invalidate_mapped_memory();
+    
     VkBuffer get_api_buffer() const { return handle; }
     uint64_t get_size() const { return size; }
     bool is_coherent() const { return coherent; }

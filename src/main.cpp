@@ -22,6 +22,7 @@
 #include "trace_samples.hpp"
 #include "draw_directions.hpp"
 #include "screen_trace.hpp"
+#include "image_readback.hpp"
 
 #define ENABLE_VALIDATION 1
 #define USE_RAY_QUERY 0
@@ -76,6 +77,15 @@ struct AppInit {
 
   SDL_Window *window;
 };
+
+void get_depth_cb(ReadBackData &&image) {
+  const uint32_t *word_ptr = reinterpret_cast<const uint32_t*>(image.bytes.get());
+  for (uint32_t i = 0; i < 4; i++) {
+    uint32_t depth = word_ptr[i] & 0x00ffffff;
+    std::cout << depth << " ";
+  }
+  std::cout << "\n";
+}
 
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
@@ -173,10 +183,6 @@ int main(int argc, char **argv) {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave_comp.spv", "main"}
   });
 
-  /*gpu::create_program("deinterleave_depth2x2", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave2x2_comp.spv", "main"}
-  });*/
-
   gpu::create_program("screen_trace_main", {
     {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/trace_comp.spv", "main"}
   });
@@ -197,6 +203,7 @@ int main(int argc, char **argv) {
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
+  ReadBackSystem readback_system;
 
   gpu::TransferCmdPool transfer_pool {};
   auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
@@ -240,6 +247,7 @@ int main(int argc, char **argv) {
   clear_depth(render_graph, gbuffer.prev_depth);
 
   glm::mat4 prev_mvp = projection * camera.get_view_mat();
+  ReadBackID depth_read_id = INVALID_READBACK;
 
   while (!quit) {
     imgui_new_frame();
@@ -269,6 +277,12 @@ int main(int argc, char **argv) {
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     downsample_depth(render_graph, gbuffer.depth);
 
+    ImGui::Begin("Depth screenshot");
+    if (ImGui::Button("Click")) {
+      depth_read_id = readback_system.read_image(render_graph, gbuffer.depth, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0);
+    }
+    ImGui::End();
+
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
     auto camera_to_world = glm::inverse(camera.get_view_mat());
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
@@ -276,10 +290,7 @@ int main(int argc, char **argv) {
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     ScreenTraceParams trace_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
 
-    //gtao.add_main_pass_graphics(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    //gtao.deinterleave_depth(render_graph, gbuffer.depth);
     //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    //gtao.add_main_pass_deinterleaved(render_graph, gtao_params, gbuffer.normal);
     //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     screen_trace.add_main_pass(render_graph, trace_params, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material);
     screen_trace.add_filter_pass(render_graph, trace_params, gbuffer.depth);
@@ -288,17 +299,23 @@ int main(int argc, char **argv) {
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     //gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
 
-    add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, ssr_texture, SSRParams {
+    add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material, ssr_texture, SSRParams {
       normal_mat,
       glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
     });
 
-    //shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, render_graph.get_backbuffer());
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, screen_trace.accumulated, render_graph.get_backbuffer());
     //add_backbuffer_subpass(render_graph, ssr_texture, sampler, DrawTex::ShowAll);
-    add_backbuffer_subpass(render_graph, screen_trace.accumulated, sampler, DrawTex::ShowAll);
+    //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     
     add_present_subpass(render_graph);
     render_graph.submit();
+    readback_system.after_submit(render_graph);
+
+    if (depth_read_id != INVALID_READBACK && readback_system.is_data_available(depth_read_id)) {
+      get_depth_cb(readback_system.get_data(depth_read_id));
+      depth_read_id = INVALID_READBACK;
+    }
 
     render_graph.remap(gbuffer.depth, gbuffer.prev_depth);
     render_graph.remap(gtao.output, gtao.prev_frame);

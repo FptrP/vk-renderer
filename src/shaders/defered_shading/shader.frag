@@ -23,19 +23,26 @@ layout (set = 0, binding = 4) uniform Constants {
 };
 
 layout (set = 0, binding = 5) uniform sampler2D shadow_map;
-layout (set = 0, binding = 6) uniform sampler2D SSAO_tex;
+layout (set = 0, binding = 6) uniform sampler2D TRACE_TEX;
 
 
 const vec3 LIGHT_POS = vec3(-1.85867, 5.81832, -0.247114);
 const vec3 LIGHT_RADIANCE = vec3(1, 1, 1);
+#define USE_OCCLUSION 1
 
 void main() {
   vec3 normal = sample_gbuffer_normal(normal_tex, screen_uv);
   vec3 albedo = texture(albedo_tex, screen_uv).xyz;
   vec4 material = texture(material_tex, screen_uv);
   float depth = textureLod(depth_tex, screen_uv, 0).r;
-  float occlusion = texture(SSAO_tex, screen_uv).r;
-
+#if USE_OCCLUSION
+  vec4 trace_res = texture(TRACE_TEX, screen_uv);
+  float occlusion = trace_res.a;
+  vec3 reflection = trace_res.rgb;
+#else
+  vec3 reflection = vec3(0);
+  float occlusion = 1;
+#endif
   vec3 camera_view_vec = reconstruct_view_vec(screen_uv, depth, fovy, aspect, znear, zfar);
   vec3 world_pos = (inverse_camera * vec4(camera_view_vec, 1)).xyz;
   vec3 camera_pos = (inverse_camera * vec4(0, 0, 0, 1)).xyz;
@@ -67,6 +74,6 @@ void main() {
 
   Lo += (kD * albedo/PI + specular) * radiance * NdotL;
   vec3 color = occlusion * (vec3(0.03) * albedo + Lo);
-
+  color += albedo * reflection;
   out_color = vec4(color, 0);
 }

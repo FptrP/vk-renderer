@@ -19,6 +19,7 @@ void add_ssr_pass(
   rendergraph::ImageResourceId depth,
   rendergraph::ImageResourceId normal,
   rendergraph::ImageResourceId color,
+  rendergraph::ImageResourceId material,
   rendergraph::ImageResourceId out,
   const SSRParams &params);
 

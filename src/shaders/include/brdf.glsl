@@ -11,6 +11,7 @@ vec3 F0_approximation(vec3 albedo, float metallic) {
   vec3 F0 = vec3(0.04);
   return mix(F0, albedo, metallic);
 }
+#if 0
 
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
@@ -25,6 +26,19 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
 	
   return num / denom;
 }
+#else
+
+float DistributionGGX(vec3 N, vec3 H, float alpha)
+{
+  float NoH = dot(N, H);
+  float alpha2 = alpha * alpha;
+  float NoH2 = NoH * NoH;
+  float den = NoH2 * alpha2 + (1 - NoH2);
+  return (((NoH2 > 0)? 1 : 0) * alpha2) / ( PI * den * den );
+}
+
+#endif
+
 
 float GeometrySchlickGGX(float NdotV, float roughness)
 {

@@ -48,7 +48,7 @@ void main() {
   
   vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
   
-  float occlusion = gtao_camera_space(pixel_pos, screen_uv, 1);
+  float occlusion = gtao_camera_space(pixel_pos, screen_uv, 2);
 
   imageStore(gtao_out, pixel_pos, vec4(occlusion, 0.f, 0.f, 0.f));
 }

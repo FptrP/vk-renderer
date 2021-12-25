@@ -47,6 +47,7 @@ namespace rendergraph {
     VkEvent allocate_event() { return event_pool.allocate(); }
     
     uint32_t get_frames_count() const { return frames_count; }
+    
     uint32_t get_backbuffers_count() const { return backbuffers_count;}
   private:
     uint32_t backbuffers_count = 0;

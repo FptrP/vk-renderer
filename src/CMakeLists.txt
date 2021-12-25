@@ -28,6 +28,7 @@ add_executable(main
   scene_renderer.cpp
   gpu_transfer.cpp
   defered_shading.cpp
+  image_readback.cpp
   ssao.cpp
   gtao.cpp
   imgui_pass.cpp

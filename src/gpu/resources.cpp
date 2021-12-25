@@ -54,6 +54,11 @@ namespace gpu {
     vmaFlushAllocation(base, allocation, offset, size);
   }
 
+  void Buffer::invalidate_mapped_memory() {
+    auto base = app_device().get_allocator();
+    vmaInvalidateAllocation(base, allocation, 0, VK_WHOLE_SIZE);
+  }
+
   VkDeviceAddress Buffer::get_device_address() const {
     VkBufferDeviceAddressInfo info {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,

@@ -12,6 +12,7 @@ void add_ssr_pass(
   rendergraph::ImageResourceId depth,
   rendergraph::ImageResourceId normal,
   rendergraph::ImageResourceId color,
+  rendergraph::ImageResourceId material,
   rendergraph::ImageResourceId out,
   const SSRParams &params)
 {
@@ -33,7 +34,7 @@ void add_ssr_pass(
   pipeline.set_rendersubpass({false, {graph.get_descriptor(out).format}});
 
   struct Input {
-    rendergraph::ImageViewId depth, normal, color, rt;
+    rendergraph::ImageViewId depth, normal, color, material, rt;
   };
 
   graph.add_task<Input>("SSR",
@@ -41,6 +42,7 @@ void add_ssr_pass(
       input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
       input.normal = builder.sample_image(normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.color = builder.sample_image(color, VK_SHADER_STAGE_FRAGMENT_BIT);
+      input.material = builder.sample_image(material, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.rt = builder.use_color_attachment(out, 0, 0);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
@@ -54,7 +56,8 @@ void add_ssr_pass(
         gpu::TextureBinding {0, resources.get_view(input.normal), sampler},
         gpu::TextureBinding {1, resources.get_view(input.depth), depth_sampler},
         gpu::TextureBinding {2, resources.get_view(input.color), sampler},
-        gpu::UBOBinding {3, cmd.get_ubo_pool(), block});
+        gpu::UBOBinding {3, cmd.get_ubo_pool(), block},
+        gpu::TextureBinding {4, resources.get_view(input.material), sampler});
 
       const auto &image_info = resources.get_image(input.rt).get_info();
       auto w = image_info.width;

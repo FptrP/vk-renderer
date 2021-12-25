@@ -1,6 +1,7 @@
 #version 460
 #include <gbuffer_encode.glsl>
 #include <screen_trace.glsl>
+#include <brdf.glsl>
 layout (location = 0) in vec2 screen_uv;
 
 layout (set = 0, binding = 0) uniform sampler2D normal_tex;
@@ -15,6 +16,9 @@ layout (set = 0, binding = 3) uniform SSRParams {
   float zfar;
 };
 
+layout (set = 0, binding = 4) uniform sampler2D material_tex;
+
+
 layout (location = 0) out vec4 out_reflection;
 
 bool simple_raymarch(in sampler2D depth_tex, vec3 start, vec3 end, const int lod, out vec3 out_ray);
@@ -23,7 +27,12 @@ bool hiz_trace(in sampler2D depth_tex, vec3 start, vec3 end, out vec3 out_ray);
 void main() {
   vec2 tex_size = textureSize(frame_tex, 0);
   vec2 aligned_screen_uv = floor(screen_uv*tex_size)/tex_size + 0.5/tex_size;
-
+  
+  vec3 material = texture(material_tex, screen_uv).rgb;
+  const float metallic = material.b;
+  const float roughness = material.g;
+  //roughness = mix(0.9, 1.0, roughness);
+  //roughness = 1.0;
   float pixel_depth = texture(depth_tex, aligned_screen_uv).x;
   vec3 pixel_normal_world = sample_gbuffer_normal(normal_tex, aligned_screen_uv);
   vec3 pixel_normal = normalize((camera_normal * vec4(pixel_normal_world, 0)).xyz);
@@ -31,6 +40,8 @@ void main() {
   vec3 view_vec = reconstruct_view_vec(aligned_screen_uv, pixel_depth, fovy, aspect, znear, zfar);
 
   vec3 R = reflect(view_vec, pixel_normal);
+  //vec3 H = normalize(-normalize(view_vec) + normalize(R));
+  vec3 H = pixel_normal;
 
   vec3 start = project_view_vec(view_vec + 0.0005 * pixel_normal, fovy, aspect, znear, zfar);
   vec3 p = project_view_vec(view_vec + R, fovy, aspect, znear, zfar);
@@ -82,7 +93,8 @@ void main() {
     vec2 fov = 0.05 * vec2(screen_size.y / screen_size.x, 1);
     vec2 border = smoothstep(vec2(0), fov, out_ray.xy) * (1 - smoothstep(vec2(1 - fov), vec2(1), out_ray.xy));
     float coef = border.x * border.y;
-    out_reflection = coef * texture(frame_tex, out_ray.xy);
+    
+    out_reflection = coef * texture(frame_tex, out_ray.xy) * DistributionGGX(pixel_normal, H, roughness) * max(dot(pixel_normal, R), 0);
     return;
   }
 
