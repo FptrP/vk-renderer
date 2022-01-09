@@ -9,6 +9,5 @@ build
 build/*
 build/gpu/*
 *.spv
-
 !src/shaders/Makefile
 push.sh
