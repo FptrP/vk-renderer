@@ -100,7 +100,9 @@ namespace gpu {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-      throw std::runtime_error("failed to open file!");
+      std::stringstream ss;
+      ss << "Failed to open file " << filename;
+      throw std::runtime_error {ss.str()};
     }
 
     size_t fileSize = (size_t) file.tellg();
@@ -208,12 +210,11 @@ namespace gpu {
     return mod;
   }
 
-  void PipelinePool::create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders) {
+  void PipelinePool::create_program(const std::string &name, std::vector<ShaderBinding> &&bindings) {
     if (programs.count(name)) {
       throw std::runtime_error {"Attemp to recreate shader program"};
     }
     
-    std::vector<ShaderBinding> bindings {shaders.begin(), shaders.end()};
     validate_bindings(bindings);
 
     LayoutBuilder layout_builder;

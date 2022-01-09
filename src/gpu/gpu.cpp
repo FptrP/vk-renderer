@@ -55,6 +55,10 @@ namespace gpu {
   void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders) {
     g_pipeline_pool->create_program(name, shaders);
   }
+
+  void create_program(const std::string &name, std::vector<ShaderBinding> &&shaders) {
+    g_pipeline_pool->create_program(name, std::move(shaders));
+  }
   
   std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count) {
     auto &dev = app_device();

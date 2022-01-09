@@ -248,12 +248,14 @@ namespace rendergraph {
     }
 #else
     for (uint32_t i = 0; i < tasks.size(); i++) {
+      api_cmd.push_label(tasks[i]->get_name().c_str());
       if (barriers.size() > i) {
         write_barrier(barriers[i], api_cmd.get_command_buffer());
       }
 
       tasks[i]->write_commands(res, api_cmd);
       api_cmd.end_renderpass(); //to be sure about barriers
+      api_cmd.pop_label();
     }
 #endif
     tasks.clear();

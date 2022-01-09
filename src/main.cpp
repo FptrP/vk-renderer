@@ -4,6 +4,12 @@
 #include <iostream>
 #include <vector>
 #include <memory>
+#include <fstream>
+#include <filesystem>
+#include <lib/json.hpp>
+
+using json = nlohmann::json; 
+namespace fs = std::filesystem;
 
 #include "gpu/gpu.hpp"
 #include "scene/scene.hpp"
@@ -23,6 +29,9 @@
 #include "draw_directions.hpp"
 #include "screen_trace.hpp"
 #include "image_readback.hpp"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <lib/stb_image_write.h>
 
 #define ENABLE_VALIDATION 1
 #define USE_RAY_QUERY 0
@@ -80,11 +89,97 @@ struct AppInit {
 
 void get_depth_cb(ReadBackData &&image) {
   const uint32_t *word_ptr = reinterpret_cast<const uint32_t*>(image.bytes.get());
-  for (uint32_t i = 0; i < 4; i++) {
-    uint32_t depth = word_ptr[i] & 0x00ffffff;
-    std::cout << depth << " ";
+  
+  const char *save_path = "captures/gbuffer_depth.csv";
+  std::ofstream file {save_path, std::ios::trunc};
+  file << "y, ";
+
+  for (uint32_t x = 0; x < image.width; x++) {
+    file << x;
+    if (x != image.width - 1) {
+      file << ",";
+    }
   }
-  std::cout << "\n";
+  
+  file << "\n";
+
+  for (uint32_t y = 0; y < image.height; y++) {
+    file << y << ",";
+    file << std::hex;
+
+    for (uint32_t x = 0; x < image.width; x++) {
+      auto depth = 0xffffff & word_ptr[y * image.width + x];
+      file << "0x" << depth;
+      if (x != image.width - 1) {
+        file << ",";
+      }
+    }
+    
+    file << std::dec;
+    file << "\n";
+  }
+  file.close();
+}
+
+void get_depth_png_cb(ReadBackData &&image) {
+  uint32_t *word_ptr = reinterpret_cast<uint32_t*>(image.bytes.get());
+  for (uint32_t y = 0; y < image.height; y++) {
+    for (uint32_t x = 0; x < image.width; x++) {
+      word_ptr[y * image.width + x] &= 0xffffff;
+    }
+  }
+  int res = stbi_write_png("captures/gbuffer_depth.png", int(image.width), int(image.height), 4, image.bytes.get(), 0);
+  std::cout << "STBI: " << res << "\n";
+}
+
+void get_rgba_cb(ReadBackData &&image) {
+  int res = stbi_write_png("captures/gbuffer_color.png", int(image.width), int(image.height), 4, image.bytes.get(), 0);
+  std::cout << "STBI: " << res << "\n";
+}
+
+static void load_shaders(const fs::path &config_path) {
+  const fs::path shader_dir = config_path.parent_path();
+
+  std::ifstream conf_file {config_path};
+  auto config = json::parse(conf_file);
+  
+  const std::unordered_map<std::string, VkShaderStageFlagBits> stages_map {
+    {"vertex", VK_SHADER_STAGE_VERTEX_BIT},
+    {"fragment", VK_SHADER_STAGE_FRAGMENT_BIT},
+    {"compute", VK_SHADER_STAGE_COMPUTE_BIT}
+  };
+
+  for (const auto &elem : config.items()) {
+    const auto prog_name = elem.key();
+    const auto &prog = elem.value();
+
+    std::vector<gpu::ShaderBinding> bindings; 
+    bindings.reserve(prog.size());
+    
+    for (const auto &shader : prog.items()) {
+      const auto &key = shader.key();
+      const auto &val = shader.value();
+      auto stage = stages_map.find(key); 
+      if (stage == stages_map.end()) {
+        throw std::runtime_error {"Incorrect stage"};
+      }
+
+      gpu::ShaderBinding binding;
+      binding.stage = stage->second;
+      binding.main = "main";
+
+      auto file_path = shader_dir / val.get<std::string>();
+      if (!file_path.has_extension()) {
+        file_path += ".spv";
+      }
+
+      binding.path = file_path.string();
+      //std::cout << "Loading " << binding.path << "\n";
+      bindings.push_back(std::move(binding));
+    }
+    std::cout << "Loading " << prog_name << " program\n";
+    gpu::create_program(prog_name, std::move(bindings));
+  }
 }
 
 const uint32_t WIDTH = 1920;
@@ -105,99 +200,7 @@ int main(int argc, char **argv) {
   }
   
   AppInit app_init {WIDTH, HEIGHT, enable_validation};
-
-  gpu::create_program("triangle", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/triangle/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/triangle/shader_frag.spv", "main"}});
-  
-  gpu::create_program("texdraw", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/texdraw/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/texdraw/shader_frag.spv", "main"}});
-  
-  gpu::create_program("perlin", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/perlin/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/perlin/shader_frag.spv", "main"}
-  });
-
-  gpu::create_program("gbuf_opaque", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gbuf/opaque_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gbuf/opaque_frag.spv", "main"}
-  });
-
-  gpu::create_program("defered_shading", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/defered_shading/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/defered_shading/shader_frag.spv", "main"}
-  });
-
-  gpu::create_program("default_shadow", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/shadows/default_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/shadows/default_frag.spv", "main"}
-  });
-  
-  gpu::create_program("ssao", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/ssao/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssao/shader_frag.spv", "main"}
-  });
-
-  gpu::create_program("gtao_main", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gtao/main_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gtao/main_frag.spv", "main"}
-  });
-
-  gpu::create_program("gtao_compute_main", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/main_comp.spv", "main"}
-  });
-
-  gpu::create_program("gtao_rt_main", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/gtao/main_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/gtao/rt_main_frag.spv", "main"}
-  });
-
-  gpu::create_program("gtao_filter", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/filter_comp.spv", "main"}
-  });
-
-  gpu::create_program("gtao_reproject", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/reproject_comp.spv", "main"}
-  });
-
-  gpu::create_program("gtao_accumulate", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao/accum_comp.spv", "main"}
-  });
-
-  gpu::create_program("downsample_depth", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/depth_downsample/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/depth_downsample/shader_frag.spv", "main"}
-  });
-
-  gpu::create_program("ssr", {
-    {VK_SHADER_STAGE_VERTEX_BIT, "src/shaders/ssr/shader_vert.spv", "main"},
-    {VK_SHADER_STAGE_FRAGMENT_BIT, "src/shaders/ssr/shader_frag.spv", "main"}
-  });
-
-  gpu::create_program("rotations", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/rotations/rot_comp.spv", "main"}
-  });
-
-  gpu::create_program("deinterleave_depth", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/deinterleave_comp.spv", "main"}
-  });
-
-  gpu::create_program("screen_trace_main", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/trace_comp.spv", "main"}
-  });
-
-  gpu::create_program("screen_trace_filter", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/filter_comp.spv", "main"}
-  });
-  
-  gpu::create_program("screen_trace_accumulate", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/screen_trace/accumulate_comp.spv", "main"}
-  });
-
-  gpu::create_program("main_deinterleaved", {
-    {VK_SHADER_STAGE_COMPUTE_BIT, "src/shaders/gtao_opt/main_deinterleaved_comp.spv", "main"}
-  });
+  load_shaders("src/shaders/config.json");
 
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
@@ -247,7 +250,7 @@ int main(int argc, char **argv) {
   clear_depth(render_graph, gbuffer.prev_depth);
 
   glm::mat4 prev_mvp = projection * camera.get_view_mat();
-  ReadBackID depth_read_id = INVALID_READBACK;
+  ReadBackID image_read_back = INVALID_READBACK;
 
   while (!quit) {
     imgui_new_frame();
@@ -277,10 +280,15 @@ int main(int argc, char **argv) {
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
     downsample_depth(render_graph, gbuffer.depth);
 
-    ImGui::Begin("Depth screenshot");
-    if (ImGui::Button("Click")) {
-      depth_read_id = readback_system.read_image(render_graph, gbuffer.depth, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0);
+    ImGui::Begin("Read texture");
+    bool depth = ImGui::Button("Depth") && (image_read_back == INVALID_READBACK);
+    bool color = ImGui::Button("Color") && (image_read_back == INVALID_READBACK);
+    if (depth) {
+      image_read_back = readback_system.read_image(render_graph, gbuffer.depth, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0);
+    } else if (color) {
+      image_read_back = readback_system.read_image(render_graph, gbuffer.albedo);
     }
+
     ImGui::End();
 
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
@@ -312,9 +320,15 @@ int main(int argc, char **argv) {
     render_graph.submit();
     readback_system.after_submit(render_graph);
 
-    if (depth_read_id != INVALID_READBACK && readback_system.is_data_available(depth_read_id)) {
-      get_depth_cb(readback_system.get_data(depth_read_id));
-      depth_read_id = INVALID_READBACK;
+    if (image_read_back != INVALID_READBACK && readback_system.is_data_available(image_read_back)) {
+      auto data = readback_system.get_data(image_read_back);
+      if (data.texel_fmt == VK_FORMAT_D24_UNORM_S8_UINT) {
+        get_depth_cb(std::move(data));
+      } else {
+        get_rgba_cb(std::move(data));
+      }
+      
+      image_read_back = INVALID_READBACK;
     }
 
     render_graph.remap(gbuffer.depth, gbuffer.prev_depth);

@@ -263,7 +263,12 @@ namespace gpu {
     PipelinePool();
     ~PipelinePool();
 
-    void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);
+    void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders) {
+      std::vector<ShaderBinding> bindings {shaders.begin(), shaders.end()};
+      create_program(name, std::move(bindings));
+    }
+    
+    void create_program(const std::string &name, std::vector<ShaderBinding> &&bindings);
 
     PipelinePool(const PipelinePool &) = delete;
     const PipelinePool &operator=(const PipelinePool &) = delete;
