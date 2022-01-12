@@ -4,7 +4,7 @@
 
 namespace rendergraph {
   
-  ImageResourceId GraphResources::create_global_image(const ImageDescriptor &desc) {
+  ImageResourceId GraphResources::create_global_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options) {
     uint32_t remap_index = image_remap.size();
     uint32_t image_index = global_images.size();
     
@@ -17,7 +17,7 @@ namespace rendergraph {
       std::move(ptr)
     });
 
-    global_images.back().vk_image.create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage);
+    global_images.back().vk_image.create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage, options);
     image_remap.emplace_back(image_index);
     
     ImageResourceId id {};

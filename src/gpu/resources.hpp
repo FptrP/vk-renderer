@@ -101,9 +101,16 @@ namespace gpu {
     void *mapped_ptr = nullptr;
   };
 
+  enum class ImageCreateOptions {
+    None,
+    Cubemap,
+    Array2D
+  };
+
   struct ImageInfo {
     VkFormat format;
     VkImageAspectFlags aspect = 0;
+
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t depth = 1;
@@ -126,7 +133,7 @@ namespace gpu {
     Image() {}
     ~Image() { close(); }
 
-    void create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
+    void create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage, ImageCreateOptions options = ImageCreateOptions::None);
     void create_reference(VkImage image, const ImageInfo &info);
 
     void close();

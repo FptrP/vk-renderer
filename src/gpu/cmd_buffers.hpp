@@ -124,7 +124,7 @@ namespace gpu {
     VkCommandBuffer cmd;
   };
 
-  constexpr uint64_t UBO_POOL_SIZE = 4 * (1 << 10); //4Kb
+  constexpr uint64_t UBO_POOL_SIZE = 8 * (1 << 10); //8Kb
 
   struct CmdContext {
     CmdContext(VkDevice device, VkCommandBuffer cmd_buf, VmaAllocator alloc, uint64_t alignment)

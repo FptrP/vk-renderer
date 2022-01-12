@@ -2,6 +2,7 @@
 #define DYNBUFFER_HPP_INCLUDED
 
 #include "resources.hpp"
+#include <stdexcept>
 
 namespace gpu {
 
@@ -105,6 +106,9 @@ namespace gpu {
       auto offset = write_offset;
       auto ptr = static_cast<uint8_t*>(buffer.get_mapped_ptr()) + offset;
       write_offset += aligned_size;
+      if (write_offset > buffer.get_size()) {
+        throw std::runtime_error {"UBOPool out of memory!\n"};
+      }
       return {static_cast<void*>(ptr), uint32_t(offset)};
     }
 

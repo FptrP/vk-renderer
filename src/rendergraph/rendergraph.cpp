@@ -104,6 +104,26 @@ namespace rendergraph {
     return ImageViewId {id, {type, aspect, base_mip, mip_count, base_layer, layer_count}};
   }
 
+  ImageViewId RenderGraphBuilder::sample_cubemap(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect) {
+    const auto &desc = resources.get_info(id);
+    auto pipeline_stages = get_pipeline_flags(stages);
+
+    ImageSubresourceState state {
+      pipeline_stages,
+      VK_ACCESS_SHADER_READ_BIT,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    };
+
+    for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
+      for (uint32_t mip = 0; mip < desc.mip_levels; mip++) {
+        ImageSubresourceId subres {id, mip, layer};
+        tracking_state.add_input(resources, subres, state);
+      }
+    }
+
+    return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_CUBE, aspect, 0, desc.mip_levels, 0, desc.array_layers}};
+  }
+
   void RenderGraphBuilder::transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -279,7 +299,7 @@ namespace rendergraph {
     present_backbuffer = false;
   }
 
-  ImageResourceId RenderGraph::create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
+  ImageResourceId RenderGraph::create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage, gpu::ImageCreateOptions options) {
     return resources.create_global_image(ImageDescriptor {
       type,
       info.format,
@@ -291,11 +311,12 @@ namespace rendergraph {
       info.depth,
       info.mip_levels,
       info.array_layers
-    });
+    },
+    options);
   }
 
-  ImageResourceId RenderGraph::create_image(const ImageDescriptor &desc) {
-    return resources.create_global_image(desc);
+  ImageResourceId RenderGraph::create_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options) {
+    return resources.create_global_image(desc, options);
   }
 
   BufferResourceId RenderGraph::create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage) {

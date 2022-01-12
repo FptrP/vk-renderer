@@ -99,55 +99,6 @@ vec3 hierarchical_raymarch(in sampler2D depth_tex, vec3 origin, vec3 direction, 
   return position;
 }
 
-vec3 hierarchical_raymarch_bounded(in sampler2D depth_tex, vec3 origin, vec3 ray_end, int most_detailed_mip, uint max_traversal_intersections, out bool valid_hit) {
-  //const vec3 inv_direction = direction != 0 ? 1.0 / direction : vec3(MAX_T_FLOAT);
-  vec3 direction = ray_end - origin;
-
-  const vec3 inv_direction = vec3(
-    direction.x != 0 ? 1.0 / direction.x : MAX_T_FLOAT,
-    direction.y != 0 ? 1.0 / direction.y : MAX_T_FLOAT,
-    direction.z != 0 ? 1.0 / direction.z : MAX_T_FLOAT);
-  
-  // Start on mip with highest detail.
-  int current_mip = most_detailed_mip;
-
-    // Could recompute these every iteration, but it's faster to hoist them out and update them.
-  vec2 screen_size = textureSize(depth_tex, 0);
-  vec2 current_mip_resolution = get_mip_resolution(screen_size, current_mip);
-  vec2 current_mip_resolution_inv = 1.0/current_mip_resolution;
-
-    // Offset to the bounding boxes uv space to intersect the ray with the center of the next pixel.
-    // This means we ever so slightly over shoot into the next region. 
-  vec2 uv_offset = 0.005 * exp2(most_detailed_mip) / screen_size;
-  //uv_offset = direction.xy < 0 ? -uv_offset : uv_offset;
-  uv_offset.x = direction.x < 0 ? -uv_offset.x : uv_offset.x;
-  uv_offset.y = direction.y < 0 ? -uv_offset.y : uv_offset.y;
-
-  // Offset applied depending on current mip resolution to move the boundary to the left/right upper/lower border depending on ray direction.
-  //vec2 floor_offset = direction.xy < 0 ? 0 : 1;
-  vec2 floor_offset = vec2(direction.x < 0 ? 0 : 1, direction.y < 0 ? 0 : 1);
-
-    // Initially advance ray to avoid immediate self intersections.
-  float current_t;
-  vec3 position;
-  initial_advance_ray(origin, direction, inv_direction, current_mip_resolution, current_mip_resolution_inv, floor_offset, uv_offset, position, current_t);
-
-  int i = 0;
-  while (i < max_traversal_intersections && current_mip >= most_detailed_mip && current_t < 1) {
-    vec2 current_mip_position = current_mip_resolution * position.xy;
-    float surface_z = texelFetch(depth_tex, ivec2(current_mip_position), current_mip).x;
-    bool skipped_tile = advance_ray(origin, direction, inv_direction, current_mip_position, current_mip_resolution_inv, floor_offset, uv_offset, surface_z, position, current_t);
-    current_mip += skipped_tile ? 1 : -1;
-    current_mip_resolution *= skipped_tile ? 0.5 : 2;
-    current_mip_resolution_inv *= skipped_tile ? 2 : 0.5;
-    ++i;
-  }
-
-  valid_hit = (i <= max_traversal_intersections);
-
-  return position;
-}
-
 bool simple_raymarch(in sampler2D depth_tex, vec3 start, vec3 end, const int lod, out vec3 out_ray) {
   vec3 delta = end - start;
   vec2 tex_size = textureSize(depth_tex, lod);

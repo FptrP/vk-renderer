@@ -68,5 +68,19 @@
   },
   "main_deinterleaved" : {
     "compute" : "gtao_opt/main_deinterleaved_comp"
+  },
+  "cubemap_probe" : {
+    "vertex" : "cubemap_probe/shader_vert",
+    "fragment" : "cubemap_probe/shader_frag"
+  },
+  "cube2oct" : {
+    "compute" : "cube2oct/shader_comp"
+  },
+  "probe_downsample" : {
+    "vertex" : "probe_downsample/shader_vert",
+    "fragment" : "probe_downsample/shader_frag"
+  },
+  "trace_probe" : {
+    "compute" : "trace_probe/shader_comp"
   }
 }

@@ -112,7 +112,6 @@ ReadBackID ReadBackSystem::read_image(rendergraph::RenderGraph &graph, rendergra
 }
 
 void ReadBackSystem::after_submit(rendergraph::RenderGraph &graph) {
-  uint32_t next_frame_id = graph.get_frame_index();
   auto it = requests.begin();
   while(it != requests.end()) {
     if (it->second.wait_frames > 0) {

@@ -4,7 +4,7 @@
 #include "rendergraph/rendergraph.hpp"
 #include "scene/camera.hpp"
 
-rendergraph::ImageResourceId create_ssr_tex(rendergraph::RenderGraph &graph,uint32_t w, uint32_t h);
+rendergraph::ImageResourceId create_ssr_tex(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h);
 
 struct SSRParams {
   glm::mat4 normal_mat;

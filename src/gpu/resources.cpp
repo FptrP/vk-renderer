@@ -69,14 +69,25 @@ namespace gpu {
     return vkGetBufferDeviceAddress(app_device().api_device(), &info);
   }
 
-  void Image::create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage) {
+  static VkImageCreateFlags options_to_flags(ImageCreateOptions options) {
+    switch (options) {
+    case ImageCreateOptions::Array2D:
+      return VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+    case ImageCreateOptions::Cubemap:
+      return VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    default:
+      return 0;
+    }
+  }
+
+  void Image::create(VkImageType type, const ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage, ImageCreateOptions options) {
     close();
     auto allocator = app_device().get_allocator();
 
     VkImageCreateInfo image_info {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .pNext = nullptr,
-      .flags = 0,
+      .flags = options_to_flags(options),
       .imageType = type,
       .format = info.format,
       .extent = info.extent3D(),

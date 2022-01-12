@@ -34,6 +34,12 @@ struct SceneRenderer {
     uint32_t mesh;
   };
   
+  const std::vector<DrawCall> &get_drawcalls() const { return draw_calls; }
+  const std::vector<VkImageView> &get_images() const { return scene_image_views; }
+  
+  rendergraph::BufferResourceId get_scene_transforms() const { return transform_buffer; }
+  const scene::CompiledScene &get_target() const { return target; }
+
 private:
   scene::CompiledScene &target;
   gpu::GraphicsPipeline opaque_pipeline;

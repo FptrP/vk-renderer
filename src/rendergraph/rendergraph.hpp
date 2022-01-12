@@ -28,7 +28,8 @@ namespace rendergraph {
 
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     ImageViewId sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect = 0);
-    
+    ImageViewId sample_cubemap(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect = 0);
+
     void use_uniform_buffer(BufferResourceId id, VkShaderStageFlags stages);
     void use_storage_buffer(BufferResourceId id, VkShaderStageFlags stages, bool readonly = true);
 
@@ -123,8 +124,8 @@ namespace rendergraph {
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_frame_index() const { return gpu.get_frame_index(); }
     
-    ImageResourceId create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage);
-    ImageResourceId create_image(const ImageDescriptor &desc);
+    ImageResourceId create_image(VkImageType type, const gpu::ImageInfo &info, VkImageTiling tiling, VkImageUsageFlags usage, gpu::ImageCreateOptions options = gpu::ImageCreateOptions::None);
+    ImageResourceId create_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options = gpu::ImageCreateOptions::None);
     BufferResourceId create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage);
 
     const gpu::ImageInfo &get_descriptor(ImageResourceId id) const;

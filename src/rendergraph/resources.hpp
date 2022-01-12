@@ -195,7 +195,7 @@ namespace rendergraph {
   struct GraphResources {
     GraphResources() {}
     
-    ImageResourceId create_global_image(const ImageDescriptor &desc);
+    ImageResourceId create_global_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options = gpu::ImageCreateOptions::None);
     ImageResourceId create_global_image_ref(gpu::Image &image);
 
     BufferResourceId create_global_buffer(const BufferDescriptor &desc);
@@ -223,14 +223,6 @@ namespace rendergraph {
     struct GlobalBuffer {
       gpu::Buffer vk_buffer;
       BufferTrackingState state;
-    };
-
-    struct FrameImage {
-      gpu::Image vk_image;
-    };
-
-    struct FrameBuffer {
-      gpu::Buffer vk_buffer;
     };
 
     std::vector<uint32_t> image_remap;
