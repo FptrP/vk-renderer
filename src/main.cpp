@@ -30,6 +30,7 @@ namespace fs = std::filesystem;
 #include "draw_directions.hpp"
 #include "screen_trace.hpp"
 #include "image_readback.hpp"
+#include "advanced_ssr.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <lib/stb_image_write.h>
@@ -220,11 +221,10 @@ int main(int argc, char **argv) {
   SamplesMarker::init(render_graph, WIDTH, HEIGHT);
   
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
+  DownsamplePass downsample_pass {};
   GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY, 1};
   ScreenSpaceTrace screen_trace {render_graph, WIDTH, HEIGHT};
-  ProbeRenderer probe_renderer {render_graph};
-  ProbeTracePass probe_trace_pass {};
-  auto ssr_texture = create_ssr_tex(render_graph, WIDTH, HEIGHT);
+  AdvancedSSR ssr {render_graph, WIDTH, HEIGHT};
 
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
@@ -242,14 +242,11 @@ int main(int argc, char **argv) {
     VK_IMAGE_TILING_OPTIMAL, 
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 
-  OctahedralProbe oct_probe {render_graph};
-
   scene::Camera camera({0.f, 1.f, -1.f});
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
   glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{-1.85867, 5.81832, -0.247114}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
 
   bool quit = false;
-  bool probe_rendered = false;
   auto ticks = SDL_GetTicks();
   
   clear_depth(render_graph, gbuffer.prev_depth);
@@ -282,12 +279,8 @@ int main(int argc, char **argv) {
     SamplesMarker::clear(render_graph);
 
     scene_renderer.draw(render_graph, gbuffer);
-    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);
-    if (!probe_rendered) {
-      probe_renderer.render_probe(render_graph, scene_renderer, glm::vec3 {-0.249147, 1.15185, -0.472075}, oct_probe);
-    }
-    
-    downsample_depth(render_graph, gbuffer.depth);
+    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);    
+    downsample_pass.run(render_graph, gbuffer.normal, gbuffer.depth, gbuffer.downsampled_normals);
 
     ImGui::Begin("Read texture");
     bool depth = ImGui::Button("Depth") && (image_read_back == INVALID_READBACK);
@@ -300,15 +293,15 @@ int main(int argc, char **argv) {
 
     ImGui::End();
 
+    ssr.render_ui();
+
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
     auto camera_to_world = glm::inverse(camera.get_view_mat());
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     ScreenTraceParams trace_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
-    ProbeTraceParams probe_trace_params {
-      camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
-    };
+    AdvancedSSRParams assr_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
     //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
     screen_trace.add_main_pass(render_graph, trace_params, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material);
@@ -317,16 +310,9 @@ int main(int argc, char **argv) {
     //gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     //gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
-
-    /*add_ssr_pass(render_graph, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material, ssr_texture, SSRParams {
-      normal_mat,
-      glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f
-    });*/
-
-    probe_trace_pass.run(render_graph, oct_probe, gbuffer.depth, gbuffer.normal, ssr_texture, probe_trace_params);
-
+    ssr.run(render_graph, assr_params, gbuffer);
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, screen_trace.accumulated, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, ssr_texture, sampler, DrawTex::ShowAll);
+    add_backbuffer_subpass(render_graph, ssr.get_ouput(), sampler, DrawTex::ShowAll);
     //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     
     add_present_subpass(render_graph);

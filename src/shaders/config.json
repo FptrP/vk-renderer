@@ -82,5 +82,19 @@
   },
   "trace_probe" : {
     "compute" : "trace_probe/shader_comp"
+  },
+  "downsample_gbuffer" : {
+    "vertex" : "advanced_ssr/fullscreen_vert",
+    "fragment" : "advanced_ssr/downsample_gbuffer_frag"
+  },
+  "depth_mips" : {
+    "vertex" : "advanced_ssr/fullscreen_vert",
+    "fragment" : "advanced_ssr/depth_mips_frag"
+  },
+  "sssr_trace" : {
+    "compute" : "advanced_ssr/trace_comp"
+  },
+  "sssr_filter" : {
+    "compute" : "advanced_ssr/filter_comp"
   }
 }

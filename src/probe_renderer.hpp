@@ -3,8 +3,8 @@
 
 #include "scene_renderer.hpp"
 
-const uint32_t PROBE_SIZE = 512;
-const uint32_t CUBE_SIZE = 256;
+const uint32_t PROBE_SIZE = 256;
+const uint32_t CUBE_SIZE = 128;
 
 struct OctahedralProbe {
   OctahedralProbe(rendergraph::RenderGraph &graph, uint32_t size = PROBE_SIZE);
@@ -44,8 +44,8 @@ private:
   VkSampler sampler;
 
   void render_side(rendergraph::RenderGraph &graph, SceneRenderer &scene_renderer, uint32_t side, glm::mat4 view);
-  void render_octahedral(rendergraph::RenderGraph &graph, OctahedralProbe &probe);
-  void probe_downsample(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_depth);
+  void render_octahedral(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_color, rendergraph::ImageResourceId probe_depth, uint32_t array_layer = 0);
+  void probe_downsample(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_depth, uint32_t array_layer = 0);
 };
 
 struct ProbeTraceParams {
@@ -59,7 +59,7 @@ struct ProbeTraceParams {
 struct ProbeTracePass {
   ProbeTracePass();
 
-  void run(rendergraph::RenderGraph &graph, OctahedralProbe &probe, rendergraph::ImageResourceId gbuffer_depth, rendergraph::ImageResourceId gbuffer_norm, rendergraph::ImageResourceId out_image,  const ProbeTraceParams &params);
+  void run(rendergraph::RenderGraph &graph, OctahedralProbeGrid &probe, rendergraph::ImageResourceId gbuffer_depth, rendergraph::ImageResourceId gbuffer_norm, rendergraph::ImageResourceId out_image,  const ProbeTraceParams &params);
 
 private:
   gpu::ComputePipeline trace_pass;

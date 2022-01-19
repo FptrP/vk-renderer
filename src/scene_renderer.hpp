@@ -13,6 +13,7 @@ struct Gbuffer {
 
   rendergraph::ImageResourceId albedo;
   rendergraph::ImageResourceId normal;
+  rendergraph::ImageResourceId downsampled_normals;
   rendergraph::ImageResourceId material;
   rendergraph::ImageResourceId depth;
   rendergraph::ImageResourceId prev_depth;

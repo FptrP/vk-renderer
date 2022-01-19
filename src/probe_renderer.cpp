@@ -168,7 +168,7 @@ void ProbeRenderer::render_side(rendergraph::RenderGraph &graph, SceneRenderer &
     });
 }
 
-void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, OctahedralProbe &probe) {
+void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_color, rendergraph::ImageResourceId probe_depth, uint32_t array_layer) {
   struct Input {
     rendergraph::ImageViewId cube_color;
     rendergraph::ImageViewId cube_distance;
@@ -180,8 +180,8 @@ void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, Octahedra
     [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
       input.cube_color = builder.sample_cubemap(cubemap_color, VK_SHADER_STAGE_COMPUTE_BIT);
       input.cube_distance = builder.sample_cubemap(cubemap_distance, VK_SHADER_STAGE_COMPUTE_BIT);
-      input.oct_color = builder.use_storage_image(probe.color, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
-      input.oct_depth = builder.use_storage_image(probe.depth, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+      input.oct_color = builder.use_storage_image(probe_color, VK_SHADER_STAGE_COMPUTE_BIT, 0, array_layer);
+      input.oct_depth = builder.use_storage_image(probe_depth, VK_SHADER_STAGE_COMPUTE_BIT, 0, array_layer);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
       const auto &desc = resources.get_image(input.oct_color).get_info();
@@ -202,7 +202,7 @@ void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, Octahedra
     });
 }
 
-void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_depth) {
+void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_depth, uint32_t array_layer) {
   auto &desc = graph.get_descriptor(probe_depth);
 
   struct Input {
@@ -213,8 +213,8 @@ void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergrap
   for (uint32_t i = 1; i < desc.mip_levels; i++) {
     graph.add_task<Input>("DownsampleProbe",
       [&](Input &input, rendergraph::RenderGraphBuilder &builder){
-        input.depth_rt = builder.use_color_attachment(probe_depth, i, 0);
-        input.depth_tex = builder.sample_image(probe_depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1, 0, 1);
+        input.depth_rt = builder.use_color_attachment(probe_depth, i, array_layer);
+        input.depth_tex = builder.sample_image(probe_depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 1, array_layer, 1);
       },
       [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
         auto set = resources.allocate_set(downsample_pass, 0); 
@@ -236,9 +236,42 @@ void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergrap
 
 void ProbeRenderer::render_probe(rendergraph::RenderGraph &graph, SceneRenderer &scene_renderer, const glm::vec3 pos, OctahedralProbe &probe) {
   render_cubemap(graph, scene_renderer, pos);
-  render_octahedral(graph, probe);
+  render_octahedral(graph, probe.color, probe.depth);
   probe_downsample(graph, probe.depth);
   probe.pos = pos;
+}
+
+static void swap_min(float &min, float &max) {
+  float real_min = std::min(min, max);
+  float real_max = std::max(min, max);
+  min = real_min;
+  max = real_max;
+}
+
+void ProbeRenderer::render_probe_grid(rendergraph::RenderGraph &graph, SceneRenderer &scene_renderer, glm::vec3 min, glm::vec3 max, OctahedralProbeGrid &probe_grid) {
+  swap_min(min.x, max.x);
+  swap_min(min.y, max.y);
+  swap_min(min.z, max.z);
+  
+  probe_grid.min = min;
+  probe_grid.max = max;
+
+  if (probe_grid.grid_size < 2) {
+    throw std::runtime_error {"Ooops"};
+  }
+  
+  glm::vec3 step = (max - min)/float(probe_grid.grid_size - 1);
+  for (uint32_t y = 0; y < probe_grid.grid_size; y++) {
+    for (uint32_t x = 0; x < probe_grid.grid_size; x++) {
+      glm::vec3 pos = min + step * glm::vec3{float(x), 0, float(y)};
+      uint32_t array_layer = y * probe_grid.grid_size + x;
+
+      render_cubemap(graph, scene_renderer, pos);
+      render_octahedral(graph, probe_grid.color_array, probe_grid.depth_array, array_layer);
+      probe_downsample(graph, probe_grid.depth_array, array_layer);
+
+    }
+  }
 }
 
 OctahedralProbe::OctahedralProbe(rendergraph::RenderGraph &graph, uint32_t size) {
@@ -282,7 +315,7 @@ using ImageViewId = rendergraph::ImageViewId;
 
 void ProbeTracePass::run(
   rendergraph::RenderGraph &graph,
-  OctahedralProbe &probe,
+  OctahedralProbeGrid &probe,
   rendergraph::ImageResourceId gbuffer_depth,
   rendergraph::ImageResourceId gbuffer_norm,
   rendergraph::ImageResourceId out_image,
@@ -298,7 +331,9 @@ void ProbeTracePass::run(
 
   struct Constants {
     glm::mat4 inverse_view;
-    glm::vec4 probe_pos;
+    glm::vec4 probe_min;
+    glm::vec4 probe_max;
+    uint32_t grid_size;
     float fovy;
     float aspect;
     float znear;
@@ -307,7 +342,9 @@ void ProbeTracePass::run(
 
   Constants consts {
     params.inv_view,
-    glm::vec4 {probe.pos, 1.f},
+    glm::vec4 {probe.min, 1.f},
+    glm::vec4 {probe.max, 1.f},
+    probe.grid_size,
     params.fovy,
     params.aspect,
     params.znear,
@@ -318,8 +355,8 @@ void ProbeTracePass::run(
     [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
       input.depth = builder.sample_image(gbuffer_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.normal = builder.sample_image(gbuffer_norm, VK_SHADER_STAGE_COMPUTE_BIT);
-      input.probe_color = builder.sample_image(probe.color, VK_SHADER_STAGE_COMPUTE_BIT);
-      input.probe_depth = builder.sample_image(probe.depth, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.probe_color = builder.sample_image(probe.color_array, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.probe_depth = builder.sample_image(probe.depth_array, VK_SHADER_STAGE_COMPUTE_BIT);
       input.out_tex = builder.use_storage_image(out_image, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {

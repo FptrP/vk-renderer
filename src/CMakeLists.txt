@@ -37,6 +37,7 @@ add_executable(main
   screen_trace.cpp
   ssr.cpp
   probe_renderer.cpp
+  advanced_ssr.cpp
 
   scene/scene.cpp
   scene/scene_as.cpp

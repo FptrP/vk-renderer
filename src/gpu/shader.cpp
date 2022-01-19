@@ -16,20 +16,20 @@ namespace gpu {
   DescriptorPool::DescriptorPool(uint32_t flips_count) 
   {
     VkDescriptorPoolSize sizes[] {
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 128},
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128},
-      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 128},
-      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 128},
-      {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 64},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 512},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 512},
+      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 512},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 512},
+      {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 512},
       {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 128},
-      {VK_DESCRIPTOR_TYPE_SAMPLER, 128}
+      {VK_DESCRIPTOR_TYPE_SAMPLER, 512}
     };
 
     VkDescriptorPoolCreateInfo info {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
       .pNext = nullptr,
       .flags = 0,
-      .maxSets = 256,
+      .maxSets = 512,
       .poolSizeCount = sizeof(sizes)/sizeof(sizes[0]),
       .pPoolSizes = sizes
     };

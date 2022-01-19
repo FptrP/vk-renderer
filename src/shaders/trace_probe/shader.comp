@@ -4,12 +4,17 @@
 
 layout (set = 0, binding = 0) uniform sampler2D DEPTH_TEX;
 layout (set = 0, binding = 1) uniform sampler2D NORMAL_TEX;
-layout (set = 0, binding = 2) uniform sampler2D PROBE_COLOR_TEX;
-layout (set = 0, binding = 3) uniform sampler2D PROBE_DEPTH_TEX;
+//layout (set = 0, binding = 2) uniform sampler2D PROBE_COLOR_TEX;
+//layout (set = 0, binding = 3) uniform sampler2D PROBE_DEPTH_TEX;
+layout (set = 0, binding = 2) uniform sampler2DArray PROBE_COLOR_TEX;
+layout (set = 0, binding = 3) uniform sampler2DArray PROBE_DEPTH_TEX;
 
 layout (set = 0, binding = 4) uniform Constants {
   mat4 inverse_view;
-  vec4 probe_pos;
+  //vec4 probe_pos;
+  vec4 probe_min;
+  vec4 probe_max;
+  uint grid_size;
   float fovy;
   float aspect;
   float znear;
@@ -21,15 +26,22 @@ layout (set = 0, binding = 5, rgba8) uniform writeonly image2D OUT_TEX;
 #define TRACE_RESULT_MISS    0
 #define TRACE_RESULT_HIT     1
 #define TRACE_RESULT_UNKNOWN 2
-#define TRACE_STEPS 40
+#define TRACE_STEPS 25
 
+int trace(
+  in vec3 ray_origin,
+  in vec3 ray_dir,
+  inout float tmax,
+  out vec2 hittexc,
+  out int hit_probe);
 
 int trace_probe(
   in vec3 ray_origin,
   in vec3 ray_dir, 
   inout float tmin,
   inout float tmax,
-  inout vec2 hitexc);
+  inout vec2 hitexc,
+  inout int probe_index);
 
 layout (local_size_x = 8, local_size_y = 4) in;
 
@@ -57,12 +69,13 @@ void main() {
   
   vec4 reflection = vec4(0);
   
-  float tmin = 1e-6, tmax = 10.f;
+  float tmin = 1e-6, tmax = 30.f;
   vec2 hit_pos;
-  
-  int res = trace_probe(world_pos, R, tmin, tmax, hit_pos);
+  int probe_index;
+  //int res = trace_probe(world_pos, R, tmin, tmax, hit_pos, probe_index);
+  int res = trace(world_pos, R, tmax, hit_pos, probe_index);
   if (res == TRACE_RESULT_HIT) {
-    reflection = texture(PROBE_COLOR_TEX, hit_pos);
+    reflection = texture(PROBE_COLOR_TEX, vec3(hit_pos, probe_index));
   }
 
   imageStore(OUT_TEX, pixel_pos, reflection);
@@ -103,7 +116,7 @@ void compute_trace_segments(in vec3 origin, in vec3 dir_frac, in float tmin, in 
 
 const float ZNEAR = 0.05;
 const float ZFAR = 80.f;
-
+/*
 int trace_segment(
   in vec3 ray_origin,
   in vec3 ray_dir,
@@ -155,7 +168,7 @@ int trace_segment(
   }
 
   return TRACE_RESULT_MISS;
-}
+}*/
 
 #define MAX_T_FLOAT 3.402823466e+38
 
@@ -202,7 +215,7 @@ vec2 get_mip_resolution(vec2 screen_dimensions, int mip_level) {
   return screen_dimensions * pow(0.5, float(mip_level));
 }
 
-vec3 hierarchical_raymarch(in sampler2D depth_tex, vec3 origin, vec3 direction, int most_detailed_mip, uint max_traversal_intersections, out bool valid_hit) {
+vec3 hierarchical_raymarch(in sampler2DArray depth_tex, int probe_index, vec3 origin, vec3 direction, int most_detailed_mip, uint max_traversal_intersections, out bool valid_hit) {
   //const vec3 inv_direction = direction != 0 ? 1.0 / direction : vec3(MAX_T_FLOAT);
   
   const vec3 inv_direction = vec3(
@@ -214,7 +227,7 @@ vec3 hierarchical_raymarch(in sampler2D depth_tex, vec3 origin, vec3 direction, 
   int current_mip = 0;
 
     // Could recompute these every iteration, but it's faster to hoist them out and update them.
-  vec2 screen_size = textureSize(depth_tex, 0);
+  vec2 screen_size = textureSize(depth_tex, 0).xy;
   vec2 current_mip_resolution = get_mip_resolution(screen_size, current_mip);
   vec2 current_mip_resolution_inv = 1.0/current_mip_resolution;
 
@@ -238,7 +251,7 @@ vec3 hierarchical_raymarch(in sampler2D depth_tex, vec3 origin, vec3 direction, 
   int i = 0;
   while (i < max_traversal_intersections && current_mip >= most_detailed_mip && !exit_due_to_low_occupancy) {
     vec2 current_mip_position = current_mip_resolution * position.xy;
-    float surface_z = texelFetch(depth_tex, ivec2(current_mip_position), current_mip).x;
+    float surface_z = texelFetch(depth_tex, ivec3(current_mip_position, probe_index), current_mip).x;
     bool skipped_tile = advance_ray(origin, direction, inv_direction, current_mip_position, current_mip_resolution_inv, floor_offset, uv_offset, surface_z, position, current_t);
     current_mip += skipped_tile ? 1 : -1;
     current_mip_resolution *= skipped_tile ? 0.5 : 2;
@@ -258,12 +271,14 @@ int trace_segment_hi(
   in vec3 ray_dir,
   in float t0,
   in float t1,
+  inout float tmin,
+  int probe_index,
   inout vec2 stop_tc
 ){
   const float RAY_EPS = 0.001;
   vec3 probe_start = ray_origin + ray_dir * (t0 + RAY_EPS);
   vec3 probe_end = ray_origin + ray_dir * (t1 - RAY_EPS);
-
+  //vec3 front = normalize(o_sign_nz(0.5 * (probe_start + probe_end)));
   if (dist_squared(probe_start, probe_end) < 0.001) {
     probe_start = ray_dir;
   }
@@ -271,11 +286,6 @@ int trace_segment_hi(
   vec2 start_oct = oct_encode(normalize(probe_start));
   vec2 end_oct = oct_encode(normalize(probe_end));
   vec3 front = oct_center(0.5 * (start_oct + end_oct));
-  //adjust by pixel
-  vec2 tex_size = textureSize(PROBE_DEPTH_TEX, 0);
-  vec2 delta = (end_oct - start_oct)/max(tex_size.x, tex_size.y);
-  start_oct += delta;
-  end_oct -= delta;
 
   //calculate depth
   const float RAY_START_BIAS = 0.0005;  //bias for for not getting immidiate intersection
@@ -285,13 +295,21 @@ int trace_segment_hi(
   vec3 p_start = vec3(start_oct, start_depth);
   vec3 p_end = vec3(end_oct, end_depth);
   bool valid = false;
-  vec3 p_stop = hierarchical_raymarch(PROBE_DEPTH_TEX, p_start, p_end - p_start, 0, TRACE_STEPS, valid);
+  vec3 p_stop = hierarchical_raymarch(PROBE_DEPTH_TEX, probe_index, p_start, p_end - p_start, 0, TRACE_STEPS, valid);
   
   const float HIT_BIAS = 0.0005; 
 
   if (valid) { 
     stop_tc = p_stop.xy;
-    float sampled_depth = textureLod(PROBE_DEPTH_TEX, p_stop.xy, 0).x;
+    vec3 stop_dir = oct_decode(stop_tc.xy);
+    float coef = decode_oct_depth(p_stop.z, ZNEAR, ZFAR)/dot(stop_dir, front);
+    vec3 ray_stop = stop_dir * coef;
+    tmin = length(ray_stop - ray_origin);
+
+    float sampled_depth = textureLod(PROBE_DEPTH_TEX, vec3(p_stop.xy, probe_index), 0).x;
+    if (p_stop.z > 1) {
+      return TRACE_RESULT_MISS;
+    }
 
     if (p_stop.z > sampled_depth + HIT_BIAS) {
       return TRACE_RESULT_UNKNOWN;
@@ -305,15 +323,40 @@ int trace_segment_hi(
   return TRACE_RESULT_MISS;
 }
 
+int get_start_probe_index(vec3 world_pos) {
+  vec3 probe_step = (probe_max.xyz - probe_min.xyz)/float(grid_size - 1);
+  vec3 coord = clamp((world_pos - probe_min.xyz)/probe_step, vec3(0, 0, 0), vec3(grid_size - 2, 2, grid_size - 2));
+  int x = int(floor(coord.x));
+  int y = int(floor(coord.z));
+  return y * int(grid_size) + x;
+}
+
+vec3 get_probe_position(int index) {
+  float y = float(index / grid_size);
+  float x = float(index % grid_size);
+  vec3 probe_step = (probe_max.xyz - probe_min.xyz)/float(grid_size - 1);
+  return probe_min.xyz + vec3(x, 0, y) * probe_step;
+}
+
+int next_probe(int start_probe, int i) {
+  int x = start_probe % int(grid_size);
+  int y = start_probe / int(grid_size);
+  int dy = (i >> 1) & 1;
+  int dx = i & 1;
+  return (y + dy) * int(grid_size) + x + dx;
+}
+
 int trace_probe(
   in vec3 ray_origin,
   in vec3 ray_dir, 
   inout float tmin,
   inout float tmax,
-  inout vec2 hitexc) {
+  inout vec2 hitexc,
+  inout int probe_index) {
   
-  const float degenerateEpsilon = 0.001;
-  vec3 probeOrigin = probe_pos.xyz;
+  const float degenerateEpsilon = 0.002;
+  probe_index = get_start_probe_index(ray_origin);
+  vec3 probeOrigin = get_probe_position(probe_index);
 
   vec3 probeRayOrigin = ray_origin - probeOrigin;
   vec3 probeRayDir = normalize(ray_dir);
@@ -323,8 +366,8 @@ int trace_probe(
 
   for (int i = 0; i < 4; i++) {
     if (abs(segments[i+1] - segments[i]) >= degenerateEpsilon) {
-      //int result = trace_segment(probeRayOrigin, probeRayDir, segments[i], segments[i+1], hitexc);
-      int result = trace_segment_hi(probeRayOrigin, probeRayDir, segments[i], segments[i+1], hitexc);
+      int result = trace_segment_hi(probeRayOrigin, probeRayDir, segments[i], segments[i+1], tmin, probe_index, hitexc);
+      //tmin = segments[i];
       if (result != TRACE_RESULT_MISS) {
         return result;
       }
@@ -332,4 +375,67 @@ int trace_probe(
   }
 
   return TRACE_RESULT_MISS;
+}
+
+int trace_probe(
+  in vec3 ray_origin,
+  in vec3 ray_dir,
+  int probe_index, 
+  inout float tmin,
+  inout float tmax,
+  inout vec2 hitexc) {
+  
+  const float degenerateEpsilon = 0.002;
+  vec3 probeOrigin = get_probe_position(probe_index);
+
+  vec3 probeRayOrigin = ray_origin - probeOrigin;
+  vec3 probeRayDir = normalize(ray_dir);
+
+  float segments[5];
+  compute_trace_segments(probeRayOrigin, 1.0/probeRayDir, tmin, tmax, segments);
+
+  for (int i = 0; i < 4; i++) {
+    if (abs(segments[i+1] - segments[i]) >= degenerateEpsilon) {
+      int result = trace_segment_hi(probeRayOrigin, probeRayDir, segments[i], segments[i+1], tmin, probe_index, hitexc);
+      //tmin = segments[i];
+      if (result != TRACE_RESULT_MISS) {
+        return result;
+      }
+    }
+  }
+
+  return TRACE_RESULT_MISS;
+}
+
+int trace(
+  in vec3 ray_origin,
+  in vec3 ray_dir,
+  inout float tmax,
+  out vec2 hittexc,
+  out int hit_probe)
+{
+  hit_probe = -1;
+  int base_probe = get_start_probe_index(ray_origin);
+  int i = 0;
+
+  int probes_left = 4;
+  float tmin = 0.f;
+  
+  int result = TRACE_RESULT_UNKNOWN;
+
+  while (probes_left > 0) {
+    int probe_id = next_probe(base_probe, i);
+    result = trace_probe(ray_origin, ray_dir, probe_id, tmin, tmax, hittexc);
+    if (result == TRACE_RESULT_UNKNOWN) {
+      i = (i + 3) & 3;
+      probes_left--;
+    } else {
+      if (result == TRACE_RESULT_HIT) {
+        hit_probe = probe_id;
+      }
+      break;
+    }
+  }
+
+  return result;
 }

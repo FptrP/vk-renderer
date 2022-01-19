@@ -3,7 +3,7 @@
 #include "gpu/gpu.hpp"
 
 rendergraph::ImageResourceId create_ssr_tex(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h) {
-   gpu::ImageInfo info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w, h};
+  gpu::ImageInfo info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w, h};
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
 }
 
