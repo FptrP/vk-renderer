@@ -96,5 +96,8 @@
   },
   "sssr_filter" : {
     "compute" : "advanced_ssr/filter_comp"
+  },
+  "sssr_blur" : {
+    "compute" : "advanced_ssr/blur_comp"
   }
 }

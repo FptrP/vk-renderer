@@ -25,16 +25,19 @@ struct AdvancedSSR {
 
   rendergraph::ImageResourceId get_ouput() const { return reflections; }
   rendergraph::ImageResourceId get_rays() const { return rays; }
+  rendergraph::ImageResourceId get_blurred() const { return blurred_reflection; }
 
 private:
   gpu::Buffer halton_buffer;
   gpu::ComputePipeline trace_pass;
   gpu::ComputePipeline filter_pass;
+  gpu::ComputePipeline blur_pass;
   VkSampler sampler;
 
   rendergraph::ImageResourceId rays;
   rendergraph::ImageResourceId reflections;
-  
+  rendergraph::ImageResourceId blurred_reflection;
+
   uint32_t counter {0u};
 
   struct {
@@ -43,6 +46,8 @@ private:
     bool accumulate_reflections = true;
     bool bilateral_filter = true;
     bool update_random = true;
+    bool use_blur = true;
+    int max_accumulated_rays = 16;
   } settings;
 
   void run_trace_pass(
@@ -51,6 +56,11 @@ private:
     const Gbuffer &gbuff);
   
   void run_filter_pass(
+    rendergraph::RenderGraph &graph,
+    const AdvancedSSRParams &params,
+    const Gbuffer &gbuff);
+  
+  void run_blur_pass(
     rendergraph::RenderGraph &graph,
     const AdvancedSSRParams &params,
     const Gbuffer &gbuff);

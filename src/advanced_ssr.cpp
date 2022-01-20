@@ -38,6 +38,9 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   filter_pass = gpu::create_compute_pipeline();
   filter_pass.set_program("sssr_filter");
 
+  blur_pass = gpu::create_compute_pipeline();
+  blur_pass.set_program("sssr_blur");
+
   auto halton_samples = halton23_seq(HALTON_SEQ_SIZE);
   const uint64_t bytes = sizeof(halton_samples[0]) * HALTON_SEQ_SIZE;
 
@@ -49,6 +52,9 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
 
   gpu::ImageInfo reflections_info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   reflections = graph.create_image(VK_IMAGE_TYPE_2D, reflections_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+
+  gpu::ImageInfo blurred_info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
+  blurred_reflection = graph.create_image(VK_IMAGE_TYPE_2D, blurred_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
 
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER); 
 }
@@ -84,7 +90,7 @@ void AdvancedSSR::run_trace_pass(
 
   if (settings.update_random) {
     counter++;
-    counter = counter % 16;
+    counter = counter % settings.max_accumulated_rays;
   }
 
   struct Input {
@@ -191,6 +197,51 @@ void AdvancedSSR::run_filter_pass(
     });
 }
 
+void AdvancedSSR::run_blur_pass(
+  rendergraph::RenderGraph &graph,
+  const AdvancedSSRParams &params,
+  const Gbuffer &gbuff)
+{
+  struct Input {
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId normal;
+    rendergraph::ImageViewId material;
+    rendergraph::ImageViewId reflections;
+    rendergraph::ImageViewId result;
+  };
+  
+  struct PushConstants {
+    float max_roughness;
+    uint32_t accumulate;
+    uint32_t disable_blur;
+  };
+  PushConstants pc {settings.max_rougness, settings.accumulate_reflections, !settings.use_blur}; 
+
+  graph.add_task<Input>("SSSR_blur",
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder){
+      input.depth = builder.sample_image(gbuff.depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 10, 0, 1);
+      input.normal = builder.sample_image(gbuff.normal, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.reflections = builder.sample_image(reflections, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.material = builder.sample_image(gbuff.material, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.result = builder.use_storage_image(blurred_reflection, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto set = resources.allocate_set(blur_pass, 0);
+      gpu::write_set(set, 
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {1, resources.get_view(input.normal), sampler},
+        gpu::TextureBinding {2, resources.get_view(input.reflections), sampler},
+        gpu::TextureBinding {3, resources.get_view(input.material), sampler},
+        gpu::StorageTextureBinding {4, resources.get_view(input.result)});
+      
+      auto ext = resources.get_image(input.result).get_extent();
+      cmd.bind_pipeline(blur_pass);
+      cmd.bind_descriptors_compute(0, {set});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
+      cmd.dispatch((ext.width + 7)/8, (ext.height + 7)/8, 1);
+    });
+}
+
 void AdvancedSSR::run(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
@@ -198,14 +249,17 @@ void AdvancedSSR::run(
 {
   run_trace_pass(graph, params, gbuff);
   run_filter_pass(graph, params, gbuff);
+  run_blur_pass(graph, params, gbuff);
 }
 
 void AdvancedSSR::render_ui() {
   ImGui::Begin("SSSR");
   ImGui::SliderFloat("Max Roughness", &settings.max_rougness, 0.f, 1.f);
+  ImGui::SliderInt("Temporal rays", &settings.max_accumulated_rays, 1, 128);
   ImGui::Checkbox("Enable normalization", &settings.normalize_reflections);
   ImGui::Checkbox("Enable accumulation", &settings.accumulate_reflections);
   ImGui::Checkbox("Enable random rays", &settings.update_random);
+  ImGui::Checkbox("Enable blur", &settings.use_blur);
   ImGui::Checkbox("Enable bilateral filter", &settings.bilateral_filter);
   ImGui::End();
 }

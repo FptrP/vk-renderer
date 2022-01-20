@@ -312,8 +312,8 @@ int main(int argc, char **argv) {
     //gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
     ssr.run(render_graph, assr_params, gbuffer);
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, screen_trace.accumulated, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, ssr.get_ouput(), sampler, DrawTex::ShowAll);
-    //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
+    add_backbuffer_subpass(render_graph, ssr.get_blurred(), sampler, DrawTex::ShowAll);
+    //add_backbuffer_subpass(render_graph, screen_trace.accumulated, sampler, DrawTex::ShowAll);
     
     add_present_subpass(render_graph);
     render_graph.submit();

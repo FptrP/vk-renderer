@@ -53,8 +53,7 @@ void main() {
 
   //halton random
   const uint base_index = uint(rand(screen_uv) * HALTON_SEQ_SIZE);
-  const uint seq_step = 3;
-  uint index = (base_index + frame_random * seq_step) & (HALTON_SEQ_SIZE - 1);
+  uint index = (base_index + frame_random) & (HALTON_SEQ_SIZE - 1);
   vec2 rnd = halton_vec[index].xy;
   //sample microphaset normal 
   vec3 tangent = get_tangent(pixel_normal);
