@@ -28,7 +28,7 @@ layout (set = 0, binding = 6) uniform sampler2D TRACE_TEX;
 
 const vec3 LIGHT_POS = vec3(-1.85867, 5.81832, -0.247114);
 const vec3 LIGHT_RADIANCE = vec3(1, 1, 1);
-#define USE_OCCLUSION 1
+#define USE_OCCLUSION 0
 
 void main() {
   vec3 normal = sample_gbuffer_normal(normal_tex, screen_uv);
@@ -62,15 +62,20 @@ void main() {
   float light_distance = length(LIGHT_POS - world_pos);
   vec3 radiance = LIGHT_RADIANCE * min(100/(light_distance * light_distance), 100.0);
 
+  float NdotL = max(dot(N, L), 0);
+  float NdotV = max(dot(N, V), 0);
+
   float NDF = DistributionGGX(N, H, roughness);        
-  float G = GeometrySmith(N, V, L, roughness);      
+  //float G = GeometrySmith(N, V, L, roughness);      
+  //float G = geometryGGX(NdotV, NdotL, roughness * roughness);
+  float G = brdfG2(NdotV, NdotL, roughness * roughness);
   vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);  
 
   vec3 kS = F;
   vec3 kD = (vec3(1.0) - kS) * (1 - metallic);
 
-  float NdotL = max(dot(N, L), 0);
-  vec3 specular = (NDF * G * F)/(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001);
+  
+  vec3 specular = (NDF * G * F)/(4.0 * NdotV * NdotL + 0.0001);
 
   Lo += (kD * albedo/PI + specular) * radiance * NdotL;
   vec3 color = occlusion * (vec3(0.03) * albedo + Lo);

@@ -39,6 +39,28 @@ float DistributionGGX(vec3 N, vec3 H, float alpha)
 
 #endif
 
+//Heitz2014Microfacet.pdf
+float brdfG1(float alpha2, float NdotV) {
+  float NdotV2 = NdotV * NdotV;
+  float tgv2 = (1 - NdotV2)/NdotV2;
+  return 2.0/(1 + sqrt(1 + alpha2 * tgv2)); 
+}
+//more accurate
+float brdfG2(float NdotV, float NdotL, float alpha2) {
+  float NdotV2 = NdotV * NdotV;
+  float NdotL2 = NdotL * NdotL;
+
+  float L1 = sqrt(1 + alpha2 * (1 - NdotV2)/NdotV2);
+  float L2 = sqrt(1 + alpha2 * (1 - NdotL2)/NdotL2);
+  return 2.0/(L1 + L2);
+}
+
+//Smith-Schlick approximation
+float geometryGGX(float NdotV, float NdotL, float alpha2) {
+  return brdfG1(alpha2, NdotV) * brdfG1(alpha2, NdotL);
+}
+
+
 
 float GeometrySchlickGGX(float NdotV, float roughness)
 {
@@ -49,6 +71,7 @@ float GeometrySchlickGGX(float NdotV, float roughness)
   float denom = NdotV * (1.0 - k) + k;
   return num / denom;
 }
+
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 {
   float NdotV = max(dot(N, V), 0.0);

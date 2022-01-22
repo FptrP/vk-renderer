@@ -94,6 +94,19 @@ bool is_valid_ray(in vec4 ray) {
   return ray.w != 1.0;
 }
 
+vec3 ray_weight(in vec3 N, in vec3 V, in vec3 L, in vec3 F0, float roughness) {
+  vec3 H = normalize(V + L);
+  vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+  
+  float alpha2 = roughness * roughness;
+  float NdotL = max(dot(N, L), 0);
+  float NdotV = max(dot(N, V), 0);
+
+  float G2 = brdfG2(NdotL, NdotV, alpha2);
+  float G1 = brdfG1(NdotV, alpha2);
+  return F * G2/G1;
+}
+
 void process_pixel(ivec2 pixel_pos, in vec2 tex_size, in vec3 F0, float roughness, ivec2 center_pixel, float center_depth, inout vec3 color_sum, inout vec3 weight_sum) {
 #if FULL_RES
   vec4 trace_result = texelFetch(RAYS_TEX, pixel_pos/2, 0);
@@ -119,13 +132,16 @@ void process_pixel(ivec2 pixel_pos, in vec2 tex_size, in vec3 F0, float roughnes
   vec3 V = -normalize(view_vec);
   vec3 N = pixel_normal;
   vec3 L = normalize(hit_vec - view_vec);
-  vec3 H = normalize(V + L);
+  /*vec3 H = normalize(V + L);
+
+  float NdotL = max(dot(N, L), 0);
+  float NdotV = max(dot(N, V), 0);
 
   float NDF = DistributionGGX(N, H, roughness);        
   float G = GeometrySmith(N, V, L, roughness);      
   vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
-  float NdotL = max(dot(N, L), 0);
+  
   vec3 specular = (NDF * G * F)/(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001);
   float pdf = (G * max(dot(V, H), 0) * NDF)/(4 * dot(H, N) * dot(V, H));
   
@@ -138,6 +154,18 @@ void process_pixel(ivec2 pixel_pos, in vec2 tex_size, in vec3 F0, float roughnes
 
   pdf = max(pdf, 0.0001);
   vec3 weight = vec3(specular * bilateral_weight * distance_weight * NdotL/pdf);
+  //vec3 weight = F * G / GeometrySchlickGGX(max(dot(V, N), 0), roughness) * bilateral_weight * distance_weight;*/
+
+  vec3 weight = ray_weight(N, V, L, F0, roughness);
+  float bilateral_weight = 1.0;
+  if ((render_flags & BILATERAL_FILTER) != 0) {
+    bilateral_weight = max(1 - 1000 * abs(center_depth - pixel_depth)/center_depth, 0);
+  }
+
+  float distance_weight = 1 - 0.25 * (abs(center_pixel.x - pixel_pos.x) + abs(center_pixel.y - pixel_pos.y));  
+
+  weight *= bilateral_weight;
+  //weight *= distance_weight;
 
   color_sum += weight * radiance;
   weight_sum += weight;
