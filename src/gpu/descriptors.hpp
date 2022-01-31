@@ -86,6 +86,16 @@ namespace gpu {
       desc_write.pBufferInfo = &info;
     }
 
+    SSBOBinding(uint32_t binding, VkBuffer buffer, VkDeviceSize offset = 0, VkDeviceSize range = VK_WHOLE_SIZE) 
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
+    {
+      info.buffer = buffer;
+      info.offset = offset;
+      info.range = range;
+      desc_write.pBufferInfo = &info;
+    }
+
+
   private:
     VkDescriptorBufferInfo info {};
   };

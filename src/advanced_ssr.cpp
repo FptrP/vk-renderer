@@ -41,6 +41,12 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   blur_pass = gpu::create_compute_pipeline();
   blur_pass.set_program("sssr_blur");
 
+  classification_pass = gpu::create_compute_pipeline();
+  classification_pass.set_program("sssr_classification");
+
+  trace_indirect_pass = gpu::create_compute_pipeline();
+  trace_indirect_pass.set_program("sssr_trace_indirect");
+
   auto halton_samples = halton23_seq(HALTON_SEQ_SIZE);
   const uint64_t bytes = sizeof(halton_samples[0]) * HALTON_SEQ_SIZE;
 
@@ -56,7 +62,15 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   gpu::ImageInfo blurred_info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   blurred_reflection = graph.create_image(VK_IMAGE_TYPE_2D, blurred_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
 
-  sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER); 
+  sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+
+  const auto indirect_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  reflective_indirect = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(VkDispatchIndirectCommand), indirect_usage);
+  glossy_indirect = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(VkDispatchIndirectCommand), indirect_usage);
+  
+  const uint64_t tile_bytes = sizeof(int) * (w * h/64);
+  reflective_tiles = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, tile_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+  glossy_tiles = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, tile_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 }
 
 struct TraceParams {
@@ -127,6 +141,94 @@ void AdvancedSSR::run_trace_pass(
       cmd.bind_descriptors_compute(0, {set}, {blk.offset, 0});
       cmd.push_constants_compute(0, sizeof(push_consts), &push_consts);
       cmd.dispatch((ext.width + 7)/8, (ext.height + 7)/8, 1);
+    });
+}
+
+void AdvancedSSR::run_trace_indirect_pass(
+  rendergraph::RenderGraph &graph,
+  const AdvancedSSRParams &params,
+  const Gbuffer &gbuff)
+{
+  TraceParams config {
+    params.normal_mat,
+    counter,
+    params.fovy,
+    params.aspect,
+    params.znear,
+    params.zfar
+  };
+
+  struct PushConstants {
+    uint32_t reflection_type;
+    float max_roughness;  
+  };
+
+  PushConstants push_consts {0, settings.max_rougness};
+
+  if (settings.update_random) {
+    counter++;
+    counter = counter % settings.max_accumulated_rays;
+  }
+
+  struct Input {
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId normal;
+    rendergraph::ImageViewId material;
+    rendergraph::ImageViewId out;
+  };
+  
+  auto mips_count = graph.get_descriptor(gbuff.depth).mip_levels;
+
+  graph.add_task<Input>("SSSR_trace",
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
+      input.depth = builder.sample_image(gbuff.depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 1, mips_count - 1, 0, 1);
+      input.normal = builder.sample_image(gbuff.downsampled_normals, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.material = builder.sample_image(gbuff.material, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.out = builder.use_storage_image(rays, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+      
+      builder.use_indirect_buffer(reflective_indirect);
+      builder.use_indirect_buffer(glossy_indirect);
+      builder.use_storage_buffer(reflective_tiles, VK_SHADER_STAGE_COMPUTE_BIT);
+      builder.use_storage_buffer(glossy_tiles, VK_SHADER_STAGE_COMPUTE_BIT);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      auto set_mirror = resources.allocate_set(trace_indirect_pass, 0);
+      auto set_glossy = resources.allocate_set(trace_indirect_pass, 0);
+
+      auto blk = cmd.allocate_ubo<TraceParams>();
+      *blk.ptr = config;
+
+      gpu::write_set(set_mirror, 
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {1, resources.get_view(input.normal), sampler},
+        gpu::TextureBinding {2, resources.get_view(input.material), sampler},
+        gpu::UBOBinding {3, cmd.get_ubo_pool(), blk},
+        gpu::UBOBinding {4, halton_buffer},
+        gpu::StorageTextureBinding {5, resources.get_view(input.out)},
+        gpu::SSBOBinding {6, resources.get_buffer(reflective_tiles)});
+      
+      gpu::write_set(set_glossy, 
+        gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
+        gpu::TextureBinding {1, resources.get_view(input.normal), sampler},
+        gpu::TextureBinding {2, resources.get_view(input.material), sampler},
+        gpu::UBOBinding {3, cmd.get_ubo_pool(), blk},
+        gpu::UBOBinding {4, halton_buffer},
+        gpu::StorageTextureBinding {5, resources.get_view(input.out)},
+        gpu::SSBOBinding {6, resources.get_buffer(glossy_tiles)});
+      
+      auto pc = push_consts;
+
+      cmd.bind_pipeline(trace_indirect_pass);
+      
+      pc.reflection_type = 0; //mirror reflections
+      cmd.bind_descriptors_compute(0, {set_mirror}, {blk.offset, 0});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
+      cmd.dispatch_indirect(resources.get_buffer(reflective_indirect).get_api_buffer());
+      
+      pc.reflection_type = 1; //glossy reflections
+      cmd.bind_descriptors_compute(0, {set_glossy}, {blk.offset, 0});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
+      cmd.dispatch_indirect(resources.get_buffer(glossy_indirect).get_api_buffer());
     });
 }
 
@@ -242,12 +344,72 @@ void AdvancedSSR::run_blur_pass(
     });
 }
 
+void AdvancedSSR::clear_indirect_params(rendergraph::RenderGraph &graph) {
+  struct Input {};
+  graph.add_task<Input>("SSSR_Clear", 
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
+      builder.transfer_write(reflective_indirect);
+      builder.transfer_write(glossy_indirect);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      VkDispatchIndirectCommand initial_dispath {0, 1, 1};
+      cmd.update_buffer(resources.get_buffer(reflective_indirect).get_api_buffer(), 0, initial_dispath);
+      cmd.update_buffer(resources.get_buffer(glossy_indirect).get_api_buffer(), 0, initial_dispath);
+    });
+}
+
+void AdvancedSSR::run_classification_pass(
+  rendergraph::RenderGraph &graph,
+  const AdvancedSSRParams &params,
+  const Gbuffer &gbuff)
+{
+  struct Input {
+    rendergraph::ImageViewId material_tex;
+    //rendergraph::BufferResourceId
+  };
+
+  struct PushConstants {
+    int width, height;
+    float g_max_roughness;
+    float g_glossy_value;
+  };
+
+  auto extent = graph.get_descriptor(rays).extent2D();
+  PushConstants pc {int(extent.width), int(extent.height), settings.max_rougness, settings.glossy_roughness_value};
+
+  graph.add_task<Input>("SSSR_Classification", 
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
+      input.material_tex = builder.sample_image(gbuff.material, VK_SHADER_STAGE_COMPUTE_BIT);
+      builder.use_storage_buffer(reflective_indirect, VK_SHADER_STAGE_COMPUTE_BIT, false);
+      builder.use_storage_buffer(glossy_indirect, VK_SHADER_STAGE_COMPUTE_BIT, false);
+      builder.use_storage_buffer(reflective_tiles, VK_SHADER_STAGE_COMPUTE_BIT, false);
+      builder.use_storage_buffer(glossy_tiles, VK_SHADER_STAGE_COMPUTE_BIT, false);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto set = resources.allocate_set(classification_pass, 0);
+      gpu::write_set(set,
+        gpu::TextureBinding {0, resources.get_view(input.material_tex), sampler},
+        gpu::SSBOBinding {1, resources.get_buffer(reflective_tiles)},
+        gpu::SSBOBinding {2, resources.get_buffer(glossy_tiles)},
+        gpu::SSBOBinding {3, resources.get_buffer(reflective_indirect)},
+        gpu::SSBOBinding {4, resources.get_buffer(glossy_indirect)});
+
+      cmd.bind_pipeline(classification_pass);
+      cmd.bind_descriptors_compute(0, {set});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
+      cmd.dispatch((extent.width + 7)/8, (extent.height + 7)/8, 1);
+    });
+}
+
 void AdvancedSSR::run(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
   const Gbuffer &gbuff)
 {
-  run_trace_pass(graph, params, gbuff);
+  clear_indirect_params(graph);
+  run_classification_pass(graph, params, gbuff);
+  run_trace_indirect_pass(graph, params, gbuff);
+  //run_trace_pass(graph, params, gbuff);
   run_filter_pass(graph, params, gbuff);
   run_blur_pass(graph, params, gbuff);
 }
@@ -255,6 +417,7 @@ void AdvancedSSR::run(
 void AdvancedSSR::render_ui() {
   ImGui::Begin("SSSR");
   ImGui::SliderFloat("Max Roughness", &settings.max_rougness, 0.f, 1.f);
+  ImGui::SliderFloat("Min glossy roughness", &settings.glossy_roughness_value, 0.f, 1.f);
   ImGui::SliderInt("Temporal rays", &settings.max_accumulated_rays, 1, 128);
   ImGui::Checkbox("Enable normalization", &settings.normalize_reflections);
   ImGui::Checkbox("Enable accumulation", &settings.accumulate_reflections);

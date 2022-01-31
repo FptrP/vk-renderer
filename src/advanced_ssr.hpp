@@ -29,9 +29,18 @@ struct AdvancedSSR {
 
 private:
   gpu::Buffer halton_buffer;
+
+  rendergraph::BufferResourceId reflective_indirect;
+  rendergraph::BufferResourceId glossy_indirect;
+  rendergraph::BufferResourceId reflective_tiles;
+  rendergraph::BufferResourceId glossy_tiles;
+  
   gpu::ComputePipeline trace_pass;
   gpu::ComputePipeline filter_pass;
   gpu::ComputePipeline blur_pass;
+  gpu::ComputePipeline classification_pass;
+  gpu::ComputePipeline trace_indirect_pass;
+
   VkSampler sampler;
 
   rendergraph::ImageResourceId rays;
@@ -42,6 +51,7 @@ private:
 
   struct {
     float max_rougness = 1.f;
+    float glossy_roughness_value = 0.5f;
     bool normalize_reflections = true;
     bool accumulate_reflections = true;
     bool bilateral_filter = true;
@@ -55,6 +65,11 @@ private:
     const AdvancedSSRParams &params,
     const Gbuffer &gbuff);
   
+  void run_trace_indirect_pass(
+    rendergraph::RenderGraph &graph,
+    const AdvancedSSRParams &params,
+    const Gbuffer &gbuff);
+
   void run_filter_pass(
     rendergraph::RenderGraph &graph,
     const AdvancedSSRParams &params,
@@ -64,6 +79,13 @@ private:
     rendergraph::RenderGraph &graph,
     const AdvancedSSRParams &params,
     const Gbuffer &gbuff);
+  
+  void run_classification_pass(
+    rendergraph::RenderGraph &graph,
+    const AdvancedSSRParams &params,
+    const Gbuffer &gbuff);
+
+  void clear_indirect_params(rendergraph::RenderGraph &graph);
 };
 
 #endif

@@ -158,10 +158,18 @@ namespace gpu {
     void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance);
     void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, uint32_t vertex_offset, uint32_t first_instance);
     void dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z);
+    void dispatch_indirect(VkBuffer buffer, VkDeviceSize offset = 0);
 
     void push_constants_graphics(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *constants);
     void push_constants_compute(uint32_t offset, uint32_t size, const void *constants);
     
+    void update_buffer(VkBuffer target, VkDeviceSize offset, VkDeviceSize data_size, const void *src);
+
+    template <typename T>
+    void update_buffer(VkBuffer target, VkDeviceSize offset, const T &data) {
+      update_buffer(target, offset, sizeof(data), &data);
+    }
+
     void push_label(const char *name);
     void pop_label();
     

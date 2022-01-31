@@ -220,6 +220,10 @@ namespace gpu {
     vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
   }
 
+  void CmdContext::dispatch_indirect(VkBuffer buffer, VkDeviceSize offset) {
+    vkCmdDispatchIndirect(cmd, buffer, offset);
+  }
+
   void CmdContext::flush_framebuffer_state(VkRenderPass renderpass) {
     if (!fb_state.dirty) {
       return;
@@ -290,6 +294,10 @@ namespace gpu {
   
   void CmdContext::push_constants_compute(uint32_t offset, uint32_t size, const void *constants) {
     vkCmdPushConstants(cmd, state.cmp_layout, VK_SHADER_STAGE_COMPUTE_BIT, offset, size, constants);
+  }
+
+  void CmdContext::update_buffer(VkBuffer target, VkDeviceSize offset, VkDeviceSize data_size, const void *src) {
+    vkCmdUpdateBuffer(cmd, target, offset, data_size, src);
   }
 
   void CmdContext::clear_resources() {

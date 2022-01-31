@@ -179,6 +179,12 @@ namespace rendergraph {
     tracking_state.add_input(resources, id, {pipeline_stages, access});
   }
 
+  void RenderGraphBuilder::use_indirect_buffer(BufferResourceId id) {
+    VkPipelineStageFlags pipeline_stages = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    VkAccessFlags access = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    tracking_state.add_input(resources, id, BufferState {pipeline_stages, access});
+  }
+
   void RenderGraphBuilder::prepare_backbuffer() {
     ImageSubresourceState state {
       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
