@@ -54,11 +54,6 @@ void main() {
   if (pixel_pos.x >= tex_size.x || pixel_pos.y >= tex_size.y) {
     return;
   }
-  
-  /*if (reflection_type == 0) {
-    imageStore(OUT_RAY, pixel_pos, vec4(0, 0, 0, 1));
-    return;
-  }*/
 
   vec3 material = texture(MATERIAL, screen_uv).rgb;
 
@@ -103,12 +98,7 @@ void main() {
   if (reflection_type == 0) { //mirror reflections
     out_ray = hierarchical_raymarch(DEPTH, ray_start, ray_dir, 0, 50, valid_hit);
   } else { //glossy
-    /*const float ray_step = mix(1.0, 2.0, roughness);
-    const float geomery_thikness = mix(0.3, 0.8, roughness);
-    
-    out_ray = trace_screen_space_ray(2, ray_start, ray_dir, ray_step, 1.0 + 0.5 * rand(screen_uv), 200, geomery_thikness, valid_hit);*/
     out_ray = hierarchical_raymarch(DEPTH, ray_start, ray_dir, 1, 25, valid_hit);
-    //out_ray = uniform_trace(1, ray_start, ray_dir, 1 + 0.5 * rand(screen_uv), 20, 1.0, valid_hit);
   }
 
   vec4 out_ray_info = vec4(0, 0, 1, 1);

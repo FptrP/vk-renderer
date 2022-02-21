@@ -81,5 +81,27 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
   return ggx1 * ggx2;
 }
 
+float sampleGGXdirPDF(in sampler2D PDF_TEX, in vec3 V, in vec3 N, in vec3 L, float roughness) {
+  vec3 Y = normalize(cross(V, N));
+  vec3 X = normalize(cross(Y, V));
+
+  //cos_theta
+  vec3 Lproj = normalize(L -  V * dot(V, L)); 
+  float cos_theta = dot(X, Lproj);
+
+  //normal
+  const float cos_phin = dot(N, X);
+  const float sin_phin = sqrt(1 - cos_phin * cos_phin);
+
+  const float alpha2 = roughness * roughness;
+
+  const float coef = sqrt(1 - alpha2);
+  const float p = coef * sin_phin;
+  const float q = 0.5 * (coef * cos_phin * cos_theta) + 0.5; //[-1; 1] -> [0; 1]
+
+  float NdotV = max(dot(N, V), 0);
+  float pdf = alpha2 * brdfG1(alpha2, NdotV)/(2 * PI * NdotV) * texture(PDF_TEX, vec2(p, q)).x;
+  return pdf;
+}
 
 #endif

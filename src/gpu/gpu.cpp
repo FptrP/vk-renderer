@@ -48,6 +48,12 @@ namespace gpu {
     return {g_pipeline_pool.get()};
   }
 
+  ComputePipeline create_compute_pipeline(const char *name) {
+    gpu::ComputePipeline pipeline {g_pipeline_pool.get()};
+    pipeline.set_program(name);
+    return pipeline;
+  }
+
   VkSampler create_sampler(const VkSamplerCreateInfo &info) {
     return g_sampler_pool->get_sampler(info);
   }

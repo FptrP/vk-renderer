@@ -13,9 +13,15 @@ rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph
 
 static gpu::Buffer create_random_vectors(uint32_t vectors_count);
 
-GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, int pattern_n)
+GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, bool half_res, int pattern_n)
   : deinterleave_n {pattern_n}
 {
+  if (half_res) {
+    width /= 2;
+    height /= 2;
+    depth_lod = 1; 
+  }
+
   gpu::ImageInfo info {VK_FORMAT_R16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   auto usage = VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
@@ -76,13 +82,17 @@ void GTAO::add_main_pass(
   rendergraph::RenderGraph &graph,
   const GTAOParams &params,
   rendergraph::ImageResourceId depth,
-  rendergraph::ImageResourceId normal)
+  rendergraph::ImageResourceId normal,
+  rendergraph::ImageResourceId material,
+  rendergraph::ImageResourceId preintegrated_pdf)
 {
 
   struct PassData {
     rendergraph::ImageViewId out;
     rendergraph::ImageViewId depth;
     rendergraph::ImageViewId norm;
+    rendergraph::ImageViewId material;
+    rendergraph::ImageViewId pdf;
   };
 
   const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
@@ -93,8 +103,10 @@ void GTAO::add_main_pass(
   
   graph.add_task<PassData>("GTAO_main",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.norm = builder.sample_image(normal, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.material = builder.sample_image(material, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.pdf = builder.sample_image(preintegrated_pdf, VK_SHADER_STAGE_COMPUTE_BIT);
       input.out = builder.use_storage_image(raw, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
@@ -107,7 +119,9 @@ void GTAO::add_main_pass(
         gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
         gpu::UBOBinding {1, cmd.get_ubo_pool(), block},
         gpu::TextureBinding {2, resources.get_view(input.norm), sampler},
-        gpu::StorageTextureBinding {3, resources.get_view(input.out)}
+        gpu::TextureBinding {3, resources.get_view(input.material), sampler},
+        gpu::TextureBinding {4, resources.get_view(input.pdf), sampler},
+        gpu::StorageTextureBinding {5, resources.get_view(input.out)}
       );
 
       const auto &extent = resources.get_image(input.out).get_extent();
@@ -137,7 +151,7 @@ void GTAO::add_main_rt_pass(
 
   graph.add_task<PassData>("GTAO_rt_main",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.norm = builder.sample_image(normal, VK_SHADER_STAGE_COMPUTE_BIT);
       input.rt = builder.use_color_attachment(raw, 0, 0);
     },
@@ -189,7 +203,7 @@ void GTAO::add_filter_pass(
 
   graph.add_task<PassData>("GTAO_filter",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.raw_gtao = builder.sample_image(raw, VK_SHADER_STAGE_COMPUTE_BIT);
       input.out = builder.use_storage_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
@@ -227,8 +241,8 @@ void GTAO::add_reprojection_pass(
 
   graph.add_task<PassData>("GTAO_reproject",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
-      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
+      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.gtao = builder.sample_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT);
       input.prev_gtao = builder.sample_image(prev_frame, VK_SHADER_STAGE_COMPUTE_BIT);
       input.out = builder.use_storage_image(output, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
@@ -278,8 +292,8 @@ void GTAO::add_accumulate_pass(
 
   graph.add_task<PassData>("GTAO_accumulate",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
-      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
+      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.gtao = builder.sample_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT);
       input.accumulated_ao = builder.use_storage_image(accumulated_ao, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
@@ -332,7 +346,7 @@ void GTAO::add_main_pass_graphics(
 
   graph.add_task<PassData>("GTAO",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.norm = builder.sample_image(normal, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.rt = builder.use_color_attachment(raw, 0, 0);
     #if GTAO_TRACE_SAMPLES
@@ -407,7 +421,7 @@ void GTAO::deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::Imag
 
   graph.add_task<PassData>("GTAO_deinterleave",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
+      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.out = builder.use_storage_image_array(deinterleaved_depth, VK_SHADER_STAGE_COMPUTE_BIT);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
@@ -419,7 +433,7 @@ void GTAO::deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::Imag
         gpu::StorageTextureBinding {1, resources.get_view(input.out)}
       );
 
-      const auto &extent = resources.get_image(input.depth).get_extent();
+      const auto &extent = resources.get_image(input.out).get_extent();
 
       cmd.bind_pipeline(deinterleave_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});
@@ -469,7 +483,7 @@ void GTAO::add_main_pass_deinterleaved(
         gpu::TextureBinding {2, resources.get_view(input.norm), sampler},
         gpu::StorageTextureBinding {3, resources.get_view(input.out)}
       );
-      const auto &info = resources.get_image(input.depth);
+      const auto &info = resources.get_image(input.out);
       const auto &extent = info.get_extent();
 
       cmd.bind_pipeline(main_deinterleaved_pipeline);

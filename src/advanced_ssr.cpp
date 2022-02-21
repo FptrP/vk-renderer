@@ -47,6 +47,9 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   trace_indirect_pass = gpu::create_compute_pipeline();
   trace_indirect_pass.set_program("sssr_trace_indirect");
 
+  tile_regression = gpu::create_compute_pipeline("tile_regression");
+  preintegrate_pass = gpu::create_compute_pipeline("pdf_preintegrate");
+
   auto halton_samples = halton23_seq(HALTON_SEQ_SIZE);
   const uint64_t bytes = sizeof(halton_samples[0]) * HALTON_SEQ_SIZE;
 
@@ -55,6 +58,9 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   
   gpu::ImageInfo rays_info {VK_FORMAT_R16G16B16A16_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   rays = graph.create_image(VK_IMAGE_TYPE_2D, rays_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+
+  rays_info.format = VK_FORMAT_R16_SFLOAT;
+  rays_occlusion = graph.create_image(VK_IMAGE_TYPE_2D, rays_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
 
   gpu::ImageInfo reflections_info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   reflections = graph.create_image(VK_IMAGE_TYPE_2D, reflections_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
@@ -71,6 +77,33 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   const uint64_t tile_bytes = sizeof(int) * (w * h/64);
   reflective_tiles = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, tile_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
   glossy_tiles = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, tile_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+  gpu::ImageInfo tile_planes_info {VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, w/16, h/16};
+  tile_planes = graph.create_image(VK_IMAGE_TYPE_2D, tile_planes_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+
+  gpu::ImageInfo pdf_info {VK_FORMAT_R32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, 1024, 1024};
+  preintegrated_pdf = graph.create_image(VK_IMAGE_TYPE_2D, pdf_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+}
+
+void AdvancedSSR::preintegrate_pdf(rendergraph::RenderGraph &graph) {
+  struct Input {
+    rendergraph::ImageViewId out_pdf;
+  };
+
+  graph.add_task<Input>("SSR_preintegrate",
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder){
+      input.out_pdf = builder.use_storage_image(preintegrated_pdf, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto set = resources.allocate_set(preintegrate_pass, 0);
+      gpu::write_set(set, 
+        gpu::StorageTextureBinding {0, resources.get_view(input.out_pdf)});
+
+      auto extent = resources.get_image(input.out_pdf).get_extent();
+      cmd.bind_pipeline(preintegrate_pass);
+      cmd.bind_descriptors_compute(0, {set});
+      cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
+    });
 }
 
 struct TraceParams {
@@ -85,7 +118,8 @@ struct TraceParams {
 void AdvancedSSR::run_trace_pass(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
-  const Gbuffer &gbuff)
+  const Gbuffer &gbuff,
+  rendergraph::ImageResourceId ssr_occlusion)
 {
   TraceParams config {
     params.normal_mat,
@@ -112,6 +146,8 @@ void AdvancedSSR::run_trace_pass(
     rendergraph::ImageViewId normal;
     rendergraph::ImageViewId material;
     rendergraph::ImageViewId out;
+    rendergraph::ImageViewId occlusion;
+    rendergraph::ImageViewId preintegrated_pdf;
   };
   
   auto mips_count = graph.get_descriptor(gbuff.depth).mip_levels;
@@ -122,6 +158,8 @@ void AdvancedSSR::run_trace_pass(
       input.normal = builder.sample_image(gbuff.downsampled_normals, VK_SHADER_STAGE_COMPUTE_BIT);
       input.material = builder.sample_image(gbuff.material, VK_SHADER_STAGE_COMPUTE_BIT);
       input.out = builder.use_storage_image(rays, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+      input.occlusion = builder.use_storage_image(ssr_occlusion, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+      input.preintegrated_pdf = builder.sample_image(preintegrated_pdf, VK_SHADER_STAGE_COMPUTE_BIT);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       auto set = resources.allocate_set(trace_pass, 0);
@@ -134,7 +172,9 @@ void AdvancedSSR::run_trace_pass(
         gpu::TextureBinding {2, resources.get_view(input.material), sampler},
         gpu::UBOBinding {3, cmd.get_ubo_pool(), blk},
         gpu::UBOBinding {4, halton_buffer},
-        gpu::StorageTextureBinding {5, resources.get_view(input.out)});
+        gpu::StorageTextureBinding {5, resources.get_view(input.out)},
+        gpu::StorageTextureBinding {6, resources.get_view(input.occlusion)},
+        gpu::TextureBinding {7, resources.get_view(input.preintegrated_pdf), sampler});
       
       auto ext = resources.get_image(input.out).get_extent();
       cmd.bind_pipeline(trace_pass);
@@ -401,15 +441,60 @@ void AdvancedSSR::run_classification_pass(
     });
 }
 
-void AdvancedSSR::run(
+void AdvancedSSR::run_tile_regression_pass(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
   const Gbuffer &gbuff)
 {
-  clear_indirect_params(graph);
-  run_classification_pass(graph, params, gbuff);
-  run_trace_indirect_pass(graph, params, gbuff);
-  //run_trace_pass(graph, params, gbuff);
+  struct Input {
+    rendergraph::ImageViewId depth_tex;
+    rendergraph::ImageViewId planes_tex;
+    //rendergraph::BufferResourceId
+  };
+
+  struct PushConstants {
+    glm::mat4 camera_to_world;
+    float fovy;
+    float aspect;
+    float znear;
+    float zfar;
+  };
+
+  auto extent = graph.get_descriptor(gbuff.depth).extent2D();
+  extent.width /= 2;
+  extent.height /= 2;
+  PushConstants pc {glm::transpose(params.normal_mat), params.fovy, params.aspect, params.znear, params.zfar};
+
+  graph.add_task<Input>("SSSR_Tile_Regression", 
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder) {
+      input.depth_tex = builder.sample_image(gbuff.depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 0, 1);
+      input.planes_tex = builder.use_storage_image(tile_planes, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto set = resources.allocate_set(tile_regression, 0);
+      
+      gpu::write_set(set,
+        gpu::TextureBinding {0, resources.get_view(input.depth_tex), sampler},
+        gpu::StorageTextureBinding {1, resources.get_view(input.planes_tex)});
+
+      cmd.bind_pipeline(tile_regression);
+      cmd.bind_descriptors_compute(0, {set});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
+      cmd.dispatch((extent.width + 7)/8, (extent.height + 7)/8, 1);
+    });
+}
+
+void AdvancedSSR::run(
+  rendergraph::RenderGraph &graph,
+  const AdvancedSSRParams &params,
+  const Gbuffer &gbuff,
+  rendergraph::ImageResourceId ssr_occlusion)
+{
+  //clear_indirect_params(graph);
+  //run_classification_pass(graph, params, gbuff);
+  //run_tile_regression_pass(graph, params, gbuff);
+  //run_trace_indirect_pass(graph, params, gbuff);
+  run_trace_pass(graph, params, gbuff, ssr_occlusion);
   run_filter_pass(graph, params, gbuff);
   run_blur_pass(graph, params, gbuff);
 }

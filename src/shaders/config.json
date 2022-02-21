@@ -105,5 +105,11 @@
   },
   "sssr_classification" : {
     "compute" : "advanced_ssr/classification_comp"
+  },
+  "tile_regression" : {
+    "compute" : "advanced_ssr/regression_comp"
+  },
+  "pdf_preintegrate" : {
+    "compute" : "advanced_ssr/preintegrate_comp"
   }
 }

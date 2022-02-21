@@ -223,8 +223,9 @@ int main(int argc, char **argv) {
   Gbuffer gbuffer {render_graph, WIDTH, HEIGHT};
   DownsamplePass downsample_pass {};
   GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY, 1};
-  ScreenSpaceTrace screen_trace {render_graph, WIDTH, HEIGHT};
   AdvancedSSR ssr {render_graph, WIDTH, HEIGHT};
+
+  ssr.preintegrate_pdf(render_graph);
 
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
@@ -249,6 +250,8 @@ int main(int argc, char **argv) {
   bool quit = false;
   auto ticks = SDL_GetTicks();
   
+  render_graph.submit();
+
   clear_depth(render_graph, gbuffer.prev_depth);
 
   glm::mat4 prev_mvp = projection * camera.get_view_mat();
@@ -300,20 +303,15 @@ int main(int argc, char **argv) {
     GTAOParams gtao_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAORTParams gtao_rt_params {camera_to_world, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
-    ScreenTraceParams trace_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
-    AdvancedSSRParams assr_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
-    //gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal);
-    //gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
-    screen_trace.add_main_pass(render_graph, trace_params, gbuffer.depth, gbuffer.normal, gbuffer.albedo, gbuffer.material);
-    screen_trace.add_filter_pass(render_graph, trace_params, gbuffer.depth);
-    screen_trace.add_accumulate_pass(render_graph, trace_params, gbuffer.depth, gbuffer.prev_depth);
-    //gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
-    //gtao.add_reprojection_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
-    //gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
-    ssr.run(render_graph, assr_params, gbuffer);
+    AdvancedSSRParams assr_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};    
+    
+    ssr.run(render_graph, assr_params, gbuffer, gtao.raw);
+    gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gbuffer.material, ssr.get_preintegrated_pdf());
+    gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
+    gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
+
     //shading_pass.draw(render_graph, gbuffer, shadows_tex, screen_trace.accumulated, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, ssr.get_blurred(), sampler, DrawTex::ShowAll);
-    //add_backbuffer_subpass(render_graph, screen_trace.accumulated, sampler, DrawTex::ShowAll);
+    add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     
     add_present_subpass(render_graph);
     render_graph.submit();

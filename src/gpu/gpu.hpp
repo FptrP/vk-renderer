@@ -23,6 +23,7 @@ namespace gpu {
 
   GraphicsPipeline create_graphics_pipeline();
   ComputePipeline create_compute_pipeline();
+  ComputePipeline create_compute_pipeline(const char *name);
 
   VkSampler create_sampler(const VkSamplerCreateInfo &info);
 

@@ -1,14 +1,15 @@
-def o_sign_nz(k):
-  if k >= 0.0:
-    return 1.0
-  else:
-    return -1.0
+from __future__ import division
+from sympy import *
+init_printing(use_unicode = True)
 
-def oct_encode(x, y, z):
-  l1 = abs(x) + abs(y) + abs(z)
-  nx = x/l1
-  ny = y/l1
-  if z < 0.0:
-    nx = (1 - abs(ny)) * o_sign_nz(nx)
-    ny = (1 - abs(nx)) * o_sign_nz(ny)
-  return 0.5 * nx + 0.5, 0.5 * ny + 0.5 
+x, theta, phi_n, a = symbols('x theta phi_n a')
+
+D = cos(x)/(1 + (a**2 - 1)/(2 + 2 * sin(x)) * (cos(x) * cos(theta) * cos(phi_n) + (sin(x) + 1) * sin(phi_n))**2)**2
+D = simplify(D)
+
+print(x, ' ', theta, ' ', phi_n)
+pprint(D)
+
+Res = integrate(D, (x, 0, pi/2))
+print("Integral")
+pprint(Res)

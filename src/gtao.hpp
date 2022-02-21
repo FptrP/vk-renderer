@@ -33,13 +33,15 @@ struct GTAOReprojection {
 };
 
 struct GTAO {
-  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, int pattern_n = 2);
+  GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, bool half_res = true, int pattern_n = 2);
 
   void add_main_pass(
     rendergraph::RenderGraph &graph,
     const GTAOParams &params,
     rendergraph::ImageResourceId depth,
-    rendergraph::ImageResourceId normal);
+    rendergraph::ImageResourceId normal,
+    rendergraph::ImageResourceId material,
+    rendergraph::ImageResourceId preintegrated_pdf);
   
   void add_main_rt_pass(
     rendergraph::RenderGraph &graph,
@@ -95,7 +97,9 @@ private:
 
   gpu::ComputePipeline deinterleave_pipeline;
   gpu::ComputePipeline main_deinterleaved_pipeline;
+  
   int deinterleave_n = 2;
+  uint32_t depth_lod = 0;
 
   gpu::Buffer random_vectors;
   
