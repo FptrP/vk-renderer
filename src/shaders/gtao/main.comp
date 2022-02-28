@@ -15,10 +15,11 @@ layout (set = 0, binding = 1) uniform GTAOParams {
 layout (set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 layout (set = 0, binding = 3) uniform sampler2D gbuffer_material;
 layout (set = 0, binding = 4) uniform sampler2D pdf;
-layout (set = 0, binding = 5, r16f) uniform image2D gtao_out;
+layout (set = 0, binding = 5, rgba16f) uniform image2D gtao_out;
 
 layout (push_constant) uniform PushConstants {
   float angle_offset;
+  uint use_mis;
 };
 
 #define USE_SAMPLES_TRACE 0
@@ -51,9 +52,14 @@ void main() {
   ivec2 pixel_pos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
   
   vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
+  float occlusion = 0;
   
-  //float occlusion = gtao_camera_space(pixel_pos, screen_uv, 2);
-  float occlusion = mis_gtao(pixel_pos, screen_uv);
+  if (use_mis > 0) {
+    occlusion = mis_gtao(pixel_pos, screen_uv);
+  } else {
+    occlusion = gtao_camera_space(pixel_pos, screen_uv, 1);
+  } 
+  
   imageStore(gtao_out, pixel_pos, vec4(occlusion, 0.f, 0.f, 0.f));
 }
 
@@ -195,7 +201,8 @@ float gtao_camera_space(in ivec2 pos, in vec2 screen_uv, uint dirs_count) {
 
     vec3 slice_normal = normalize(cross(w0, -sample_end_pos));
     vec3 normal_projected = camera_normal - dot(camera_normal, slice_normal) * slice_normal;
-    float n = PI/2.0 - acos(dot(normalize(normal_projected), normalize(sample_end_pos - camera_pos)));
+    vec3 X = -normalize(cross(slice_normal, w0));
+    float n = PI/2.0 - acos(dot(normalize(normal_projected), X));
 
     float h_cos = find_horizon(screen_uv, camera_pos, sample_direction, SAMPLES, w0);
     float h = acos(h_cos);
@@ -227,7 +234,8 @@ float mis_gtao(in ivec2 pos, in vec2 screen_uv) {
 
   vec3 slice_normal = normalize(cross(w0, -sample_end_pos));
   vec3 normal_projected = camera_normal - dot(camera_normal, slice_normal) * slice_normal;
-  float n = PI/2.0 - acos(dot(normalize(normal_projected), L));
+  vec3 X = -normalize(cross(slice_normal, w0));
+  float n = PI/2.0 - acos(dot(normalize(normal_projected), X));
 
   float h_cos = find_horizon(screen_uv, camera_pos, sample_direction, SAMPLES, w0);
   float h = acos(h_cos);
@@ -239,8 +247,9 @@ float mis_gtao(in ivec2 pos, in vec2 screen_uv) {
   float pdf_uniform = 1.0/(2 * PI);
   float mis_weight = 1.0/(pdf_uniform + pdf_ggx);
 
-  float ao = imageLoad(gtao_out, pos).x;
-  float result = (isnan(mis_weight) || (roughness < 0.3) || (ao < 0.00001))? (occlusion/pdf_uniform) : (ao + mis_weight * occlusion);
+  vec2 ao = imageLoad(gtao_out, pos).xy;
+  
+  float result = (isnan(mis_weight) || (ao.x < 0.00001))? (occlusion/pdf_uniform) : 2 * PI * (ao.x + mis_weight * occlusion)/(ao.y + mis_weight);
   return result;
 }
 

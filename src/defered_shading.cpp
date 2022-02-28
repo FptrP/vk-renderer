@@ -93,7 +93,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       cmd.bind_scissors(0, 0, w, h);
       cmd.bind_descriptors_graphics(0, {set}, {0});
       cmd.draw(3, 1, 0, 0);
-      imgui_draw(cmd.get_command_buffer());
+      //imgui_draw(cmd.get_command_buffer());
       cmd.end_renderpass();
     }); 
 }

@@ -83,7 +83,7 @@ void main() {
     process_pixel(pixel_pos, tex_size, F0, roughness, pixel_pos, center_depth, color_sum, weight_sum);
   }
  
-  if (max(weight_sum.x, max(weight_sum.y ,weight_sum.z)) < 0.001) {
+  if (max(weight_sum.x, max(weight_sum.y, weight_sum.z)) < 0.001) {
     weight_sum = vec3(1, 1, 1);
   }
   color_sum /= weight_sum;

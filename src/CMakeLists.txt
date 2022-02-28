@@ -38,7 +38,8 @@ add_executable(main
   ssr.cpp
   probe_renderer.cpp
   advanced_ssr.cpp
-
+  taa.cpp
+  
   scene/scene.cpp
   scene/scene_as.cpp
   scene/images.cpp)

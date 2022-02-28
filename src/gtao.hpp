@@ -3,6 +3,7 @@
 
 #include "scene/camera.hpp"
 #include "rendergraph/rendergraph.hpp"
+#include "scene_renderer.hpp"
 
 #define GTAO_TRACE_SAMPLES 0
 
@@ -69,15 +70,16 @@ struct GTAO {
 
   void add_accumulate_pass(
     rendergraph::RenderGraph &graph,
-    const GTAOReprojection &params,
-    rendergraph::ImageResourceId depth,
-    rendergraph::ImageResourceId prev_depth);
+    const DrawTAAParams &params,
+    const Gbuffer &gbuffer);
 
   void deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId depth);
   void add_main_pass_deinterleaved(
     rendergraph::RenderGraph &graph,
     const GTAOParams &params,
     rendergraph::ImageResourceId normal);
+
+  void draw_ui();
 
   rendergraph::ImageResourceId raw; //output of main pass
   rendergraph::ImageResourceId filtered; //output of filter pass
@@ -102,7 +104,7 @@ private:
   uint32_t depth_lod = 0;
 
   gpu::Buffer random_vectors;
-  
+  bool mis_gtao = true;
   uint32_t frame_count = 0;
 
   VkSampler sampler;

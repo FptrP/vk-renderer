@@ -3,16 +3,16 @@
 
 #include "rendergraph/rendergraph.hpp"
 
-void downsample_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId depth_tex);
-
 struct DownsamplePass {
   DownsamplePass();
 
   void run(
     rendergraph::RenderGraph &graph,
     rendergraph::ImageResourceId src_normals,
+    rendergraph::ImageResourceId src_velocity,
     rendergraph::ImageResourceId depth,
-    rendergraph::ImageResourceId out_normals);
+    rendergraph::ImageResourceId out_normals,
+    rendergraph::ImageResourceId out_velocity);
 
 private:
   gpu::GraphicsPipeline downsample_gbuffer;
@@ -22,8 +22,10 @@ private:
   void run_downsample_gbuff(
     rendergraph::RenderGraph &graph,
     rendergraph::ImageResourceId src_normals,
+    rendergraph::ImageResourceId src_velocity,
     rendergraph::ImageResourceId depth,
-    rendergraph::ImageResourceId out_normal);
+    rendergraph::ImageResourceId out_normal,
+    rendergraph::ImageResourceId out_velocity);
 
   void run_downsample_depth(
     rendergraph::RenderGraph &graph,

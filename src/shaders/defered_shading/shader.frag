@@ -23,12 +23,13 @@ layout (set = 0, binding = 4) uniform Constants {
 };
 
 layout (set = 0, binding = 5) uniform sampler2D shadow_map;
-layout (set = 0, binding = 6) uniform sampler2D TRACE_TEX;
+layout (set = 0, binding = 6) uniform sampler2D occlusion_tex;
 
+float sample_ocllusion(float depth, vec2 screen_uv);
 
 const vec3 LIGHT_POS = vec3(-1.85867, 5.81832, -0.247114);
-const vec3 LIGHT_RADIANCE = vec3(1, 1, 1);
-#define USE_OCCLUSION 0
+const vec3 LIGHT_RADIANCE = vec3(0.1, 0.1, 0.1);
+#define USE_OCCLUSION 1
 
 void main() {
   vec3 normal = sample_gbuffer_normal(normal_tex, screen_uv);
@@ -36,9 +37,9 @@ void main() {
   vec4 material = texture(material_tex, screen_uv);
   float depth = textureLod(depth_tex, screen_uv, 0).r;
 #if USE_OCCLUSION
-  vec4 trace_res = texture(TRACE_TEX, screen_uv);
-  float occlusion = trace_res.a;
-  vec3 reflection = trace_res.rgb;
+  //vec4 trace_res = texture(occlusion_tex, screen_uv);
+  float occlusion = sample_ocllusion(depth, screen_uv);
+  vec3 reflection = vec3(0);
 #else
   vec3 reflection = vec3(0);
   float occlusion = 1;
@@ -78,7 +79,31 @@ void main() {
   vec3 specular = (NDF * G * F)/(4.0 * NdotV * NdotL + 0.0001);
 
   Lo += (kD * albedo/PI + specular) * radiance * NdotL;
-  vec3 color = occlusion * (vec3(0.03) * albedo + Lo);
-  color += albedo * reflection;
-  out_color = vec4(color, 0);
+  vec3 color = occlusion * (vec3(0.6) * albedo + Lo);
+  
+  //out_color = vec4(color, 0);
+  out_color = vec4(occlusion, occlusion, occlusion, 0);
+}
+
+float sample_ocllusion(float depth, vec2 screen_uv) {
+  
+  vec4 lowres_depth;
+  lowres_depth.x = textureLodOffset(depth_tex, screen_uv, 1, ivec2(0, 0)).x;
+  lowres_depth.y = textureLodOffset(depth_tex, screen_uv, 1, ivec2(1, 0)).x;
+  lowres_depth.z = textureLodOffset(depth_tex, screen_uv, 1, ivec2(0, 1)).x;
+  lowres_depth.w = textureLodOffset(depth_tex, screen_uv, 1, ivec2(1, 1)).x;
+
+  vec4 delta = abs(lowres_depth - vec4(depth));
+  float min_delta = min(min(delta.x, delta.y), min(delta.z, delta.w));
+  
+  if (min_delta == delta.x) {
+    return textureOffset(occlusion_tex, screen_uv, ivec2(0, 0)).x;
+  } else if (min_delta == delta.y) {
+    return textureOffset(occlusion_tex, screen_uv, ivec2(1, 0)).x;
+  } else if (min_delta == delta.z) {
+    return textureOffset(occlusion_tex, screen_uv, ivec2(0, 1)).x;
+  } else {
+    return textureOffset(occlusion_tex, screen_uv, ivec2(1, 1)).x;
+  }
+  return 1.0;
 }

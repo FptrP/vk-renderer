@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 
+#include "imgui_pass.hpp"
 #include "trace_samples.hpp"
 
 rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height) {
@@ -23,9 +24,10 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, boo
   }
 
   gpu::ImageInfo info {VK_FORMAT_R16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+  gpu::ImageInfo info_raw {VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   auto usage = VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 
-  raw = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  raw = graph.create_image(VK_IMAGE_TYPE_2D, info_raw, VK_IMAGE_TILING_OPTIMAL, usage|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
   filtered = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   prev_frame = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
   output = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
@@ -95,9 +97,16 @@ void GTAO::add_main_pass(
     rendergraph::ImageViewId pdf;
   };
 
+  struct PushConsts {
+    float base_angle;
+    uint32_t use_mis;
+  };
+
   const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
   float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
   base_angle += rand()/float(RAND_MAX) - 0.5;
+
+  PushConsts push_consts {base_angle, mis_gtao};
 
   frame_count += 1;
   
@@ -128,7 +137,7 @@ void GTAO::add_main_pass(
 
       cmd.bind_pipeline(main_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
-      cmd.push_constants_compute(0, sizeof(base_angle), &base_angle);
+      cmd.push_constants_compute(0, sizeof(push_consts), &push_consts);
       cmd.dispatch(extent.width/8, extent.height/4, 1);
     });
 
@@ -272,48 +281,53 @@ void GTAO::add_reprojection_pass(
 
 void GTAO::add_accumulate_pass(
     rendergraph::RenderGraph &graph,
-    const GTAOReprojection &params,
-    rendergraph::ImageResourceId depth,
-    rendergraph::ImageResourceId prev_depth)
+    const DrawTAAParams &params,
+    const Gbuffer &gbuffer)
 {
   struct PassData {
     rendergraph::ImageViewId depth;
     rendergraph::ImageViewId prev_depth;
     rendergraph::ImageViewId gtao;
     rendergraph::ImageViewId accumulated_ao;
+    rendergraph::ImageViewId velocity;
   };
 
-  struct PushConstants {
-    float znear;
-    float zfar;
+  struct AccumConstants {
+    glm::mat4 inverse_camera;
+    glm::mat4 prev_inverse_camera;
+    glm::vec4 fovy_aspect_znear_zfar;
   };
 
-  PushConstants constants {params.znear, params.zfar};
+  AccumConstants constants {glm::inverse(params.camera), glm::inverse(params.prev_camera), params.fovy_aspect_znear_zfar};
 
   graph.add_task<PassData>("GTAO_accumulate",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
-      input.depth = builder.sample_image(depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
-      input.prev_depth = builder.sample_image(prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
+      input.depth = builder.sample_image(gbuffer.depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
+      input.prev_depth = builder.sample_image(gbuffer.prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, depth_lod, 1, 0, 1);
       input.gtao = builder.sample_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT);
       input.accumulated_ao = builder.use_storage_image(accumulated_ao, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+      input.velocity = builder.sample_image(gbuffer.downsampled_velocity_vectors, VK_SHADER_STAGE_COMPUTE_BIT);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
 
       auto set = resources.allocate_set(accumulate_pipeline, 0);
-    
+      auto blk = cmd.allocate_ubo<AccumConstants>();
+      *blk.ptr = constants;
+
       gpu::write_set(set,
         gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
         gpu::TextureBinding {1, resources.get_view(input.prev_depth), sampler},
         gpu::TextureBinding {2, resources.get_view(input.gtao), sampler},
-        gpu::StorageTextureBinding {3, resources.get_view(input.accumulated_ao)}
+        gpu::StorageTextureBinding {3, resources.get_view(input.accumulated_ao)},
+        gpu::TextureBinding {4, resources.get_view(input.velocity), sampler},
+        gpu::UBOBinding {5, cmd.get_ubo_pool(), blk}
       );
 
       const auto &extent = resources.get_image(input.accumulated_ao).get_extent();
 
       cmd.bind_pipeline(accumulate_pipeline);
-      cmd.bind_descriptors_compute(0, {set}, {});
-      cmd.push_constants_compute(0, sizeof(constants), &constants);
-      cmd.dispatch(extent.width/8, extent.height/4, 1);
+      cmd.bind_descriptors_compute(0, {set}, {blk.offset});
+      cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
     });
 }
 
@@ -494,4 +508,10 @@ void GTAO::add_main_pass_deinterleaved(
         cmd.dispatch(extent.width/8, extent.height/4, 1);
       }
     });
+}
+
+void GTAO::draw_ui() {
+  ImGui::Begin("GTAO");
+  ImGui::Checkbox("Enable MIS", &mis_gtao);
+  ImGui::End();
 }

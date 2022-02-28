@@ -31,7 +31,7 @@ vec3 trace_screen_space_ray(vec3 ray_origin, vec3 ray_dir, float stride, float j
 vec3 hierarchical_raymarch_find_hor(in sampler2D depth_tex, vec3 origin, vec3 direction, int most_detailed_mip, uint max_traversal_intersections, out bool valid_hit, in vec3 w0, in vec3 camera_start, inout float h);
 
 layout (set = 0, binding = 5, rgba16) uniform image2D OUT_RAY;
-layout (set = 0, binding = 6, r16f) uniform image2D OUT_OCCLUSION;
+layout (set = 0, binding = 6, rgba16f) uniform image2D OUT_OCCLUSION;
 
 layout (set = 0, binding = 7) uniform sampler2D PDF_TEX;
 
@@ -127,21 +127,21 @@ void main() {
     vec3 X = normalize(cross(slice_normal, w0));
     float n = PI/2.0 - acos(dot(normalize(normal_projected), X));
     
-    bool no_occlusion = h < 0.0; 
+    bool no_occlusion = h == -1.0; 
     h = acos(h);
     h = min(n + min(h - n, PI/2.0), h);
     
-    float pdf = sampleGGXdirPDF(PDF_TEX, w0, pixel_normal, R, 1.0);
+    float pdf = sampleGGXdirPDF(PDF_TEX, w0, pixel_normal, R, material.g);
     float pdf_uniform = 1.0/(2.0 * PI);
     float mis_weight = 1.0 / (pdf + pdf_uniform);
 
     float occlusion = (1.0/PI) * length(normal_projected) * 0.25 * max(-cos(2 * h - n) + cos(n) + 2*h*sin(n), 0);
-    //float result = occlusion / pdf;
+    //float result = occlusion;
     float result = occlusion * mis_weight;
-    result = isnan(result)? 1.0 : result;
+    result = isnan(result)? 0.0 : result;
     //result = (material.g < 0.3)? 0.0 : result;
     
-    imageStore(OUT_OCCLUSION, pixel_pos, vec4(no_occlusion? 1.0 : result, 0, 0, 0));
+    imageStore(OUT_OCCLUSION, pixel_pos, vec4(no_occlusion? 0.0 : result, no_occlusion? 0 : mis_weight, 0, 0));
   }
 
 }

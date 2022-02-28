@@ -17,8 +17,19 @@ struct Gbuffer {
   rendergraph::ImageResourceId material;
   rendergraph::ImageResourceId depth;
   rendergraph::ImageResourceId prev_depth;
+  rendergraph::ImageResourceId velocity_vectors;
+  rendergraph::ImageResourceId downsampled_velocity_vectors;
 
   uint32_t w, h;
+};
+
+struct DrawTAAParams {
+  glm::mat4 mvp;
+  glm::mat4 prev_mvp;
+  glm::mat4 camera;
+  glm::mat4 prev_camera;
+  glm::vec4 jitter;
+  glm::vec4 fovy_aspect_znear_zfar;
 };
 
 struct SceneRenderer {
@@ -28,6 +39,7 @@ struct SceneRenderer {
   void update_scene(const glm::mat4 &camera, const glm::mat4 &projection);
   
   void draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer);
+  void draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const DrawTAAParams &params);
   void render_shadow(rendergraph::RenderGraph &graph, const glm::mat4 &shadow_mvp, rendergraph::ImageResourceId out_tex, uint32_t layer);
 
   struct DrawCall {
@@ -44,6 +56,7 @@ struct SceneRenderer {
 private:
   scene::CompiledScene &target;
   gpu::GraphicsPipeline opaque_pipeline;
+  gpu::GraphicsPipeline opaque_taa_pipeline;
   gpu::GraphicsPipeline shadow_pipeline;
 
   std::vector<VkImageView> scene_image_views;

@@ -100,7 +100,7 @@ float sampleGGXdirPDF(in sampler2D PDF_TEX, in vec3 V, in vec3 N, in vec3 L, flo
   const float q = 0.5 * (coef * cos_phin * cos_theta) + 0.5; //[-1; 1] -> [0; 1]
 
   float NdotV = max(dot(N, V), 0);
-  float pdf = alpha2 * brdfG1(alpha2, NdotV)/(2 * PI * NdotV) * texture(PDF_TEX, vec2(p, q)).x;
+  float pdf = alpha2 * brdfG1(alpha2, NdotV)/(2 * PI * NdotV + 0.00001) * texture(PDF_TEX, vec2(p, q)).x;
   return pdf;
 }
 

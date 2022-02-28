@@ -27,11 +27,13 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
 
   albedo = graph.create_image(VK_IMAGE_TYPE_2D, albedo_info, tiling, color_usage);
   normal = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
-  
+  velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
+
   normal_info.width /= 2;
   normal_info.height /= 2;
   downsampled_normals = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
-
+  downsampled_velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
+  
   material = graph.create_image(VK_IMAGE_TYPE_2D, mat_info, tiling, color_usage);
   depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage);
   prev_depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -55,11 +57,22 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   opaque_pipeline.set_program("gbuf_opaque");
   opaque_pipeline.set_registers(regs);
   opaque_pipeline.set_vertex_input(scene::get_vertex_input());    
-  
   opaque_pipeline.set_rendersubpass({true, {
     VK_FORMAT_R8G8B8A8_SRGB, 
     VK_FORMAT_R16G16_SFLOAT,
     VK_FORMAT_R8G8B8A8_SRGB,
+    VK_FORMAT_D24_UNORM_S8_UINT
+  }});
+
+  opaque_taa_pipeline = gpu::create_graphics_pipeline();
+  opaque_taa_pipeline.set_program("gbuf_opaque_taa");
+  opaque_taa_pipeline.set_registers(regs);
+  opaque_taa_pipeline.set_vertex_input(scene::get_vertex_input());    
+  opaque_taa_pipeline.set_rendersubpass({true, {
+    VK_FORMAT_R8G8B8A8_SRGB, 
+    VK_FORMAT_R16G16_SFLOAT,
+    VK_FORMAT_R8G8B8A8_SRGB,
+    VK_FORMAT_R16G16_SFLOAT,
     VK_FORMAT_D24_UNORM_S8_UINT
   }});
 
@@ -68,7 +81,11 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   shadow_pipeline.set_registers(regs);
   shadow_pipeline.set_vertex_input(scene::get_vertex_input_shadow());
 
-  sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+  auto sampler_info = gpu::DEFAULT_SAMPLER;
+  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+  sampler = gpu::create_sampler(sampler_info);
 
   view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(GbufConst), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -179,6 +196,90 @@ void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer
         gpu::SamplerBinding {3, sampler});
 
       cmd.bind_descriptors_graphics(0, {set}, {0});
+
+      for (const auto &draw_call : draw_calls) {
+        const auto &mesh = target.meshes[draw_call.mesh];
+        const auto &material = target.materials[mesh.material_index];
+
+        if (material.albedo_tex_index == scene::INVALID_TEXTURE) {
+          continue;
+        }
+
+        PushData pc {};
+        pc.transform_index = draw_call.transform;
+        pc.albedo_index = material.albedo_tex_index;
+        pc.mr_index = material.metalic_roughness_index;
+        pc.flags = material.clip_alpha? 0xff : 0;
+        
+        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
+        cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
+      }
+
+
+      cmd.end_renderpass();
+      
+    });
+}
+
+void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const DrawTAAParams &params) {
+   struct Data {
+    rendergraph::ImageViewId albedo;
+    rendergraph::ImageViewId normal;
+    rendergraph::ImageViewId material;
+    rendergraph::ImageViewId depth;
+    rendergraph::ImageViewId velocity;
+  };
+  
+  struct GbufConst {
+    glm::mat4 view_projection;
+    glm::mat4 prev_view_projection;
+    glm::vec4 jitter;
+    glm::vec4 fovy_aspect_znear_zfar;
+  };
+  
+  GbufConst consts {params.mvp, params.prev_mvp, params.jitter, params.fovy_aspect_znear_zfar};
+
+  graph.add_task<Data>("GbufferPass",
+    [&](Data &input, rendergraph::RenderGraphBuilder &builder){
+      input.albedo = builder.use_color_attachment(gbuffer.albedo, 0, 0);
+      input.normal = builder.use_color_attachment(gbuffer.normal, 0, 0);
+      input.material = builder.use_color_attachment(gbuffer.material, 0, 0);
+      input.depth = builder.use_depth_attachment(gbuffer.depth, 0, 0);
+      input.velocity = builder.use_color_attachment(gbuffer.velocity_vectors, 0, 0);
+
+      builder.use_storage_buffer(transform_buffer, VK_SHADER_STAGE_VERTEX_BIT);
+    },
+    [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      cmd.set_framebuffer(gbuffer.w, gbuffer.h, {
+        resources.get_view(input.albedo),
+        resources.get_view(input.normal),
+        resources.get_view(input.material),
+        resources.get_view(input.velocity),
+        resources.get_view(input.depth)
+      });
+
+      auto vbuf = target.vertex_buffer.get_api_buffer();
+      auto ibuf = target.index_buffer.get_api_buffer();
+      
+      cmd.bind_pipeline(opaque_taa_pipeline);
+      cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
+      cmd.clear_depth_attachment(1.f);
+      cmd.bind_viewport(0.f, 0.f, gbuffer.w, gbuffer.h, 0.f, 1.f);
+      cmd.bind_scissors(0, 0, gbuffer.w, gbuffer.h);
+      cmd.bind_vertex_buffers(0, {vbuf}, {0ul});
+      cmd.bind_index_buffer(ibuf, 0, VK_INDEX_TYPE_UINT32);
+      
+      auto blk = cmd.allocate_ubo<GbufConst>();
+      *blk.ptr = consts;
+
+      auto set = resources.allocate_set(opaque_taa_pipeline.get_layout(0));
+      gpu::write_set(set, 
+        gpu::UBOBinding {0, cmd.get_ubo_pool(), blk},
+        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
+        gpu::ArrayOfImagesBinding {2, scene_image_views},
+        gpu::SamplerBinding {3, sampler});
+
+      cmd.bind_descriptors_graphics(0, {set}, {blk.offset});
 
       for (const auto &draw_call : draw_calls) {
         const auto &mesh = target.meshes[draw_call.mesh];

@@ -31,7 +31,7 @@ namespace fs = std::filesystem;
 #include "screen_trace.hpp"
 #include "image_readback.hpp"
 #include "advanced_ssr.hpp"
-
+#include "taa.hpp"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <lib/stb_image_write.h>
 
@@ -88,6 +88,31 @@ struct AppInit {
 
   SDL_Window *window;
 };
+
+static glm::vec4 next_taa_offset(uint32_t w, uint32_t h) {
+  static int index = 0;
+  
+  constexpr glm::vec2 offsets[] {
+    {0.25f, 0.25f},
+    {0.75f, 0.75f},
+    {0.75f, 0.25f},
+    {0.25f, 0.75f}
+  };
+
+  glm::vec2 inv_resolution {1.0/w, 1.0/h};
+  glm::vec2 offset = 2.0f * offsets[index] - 1.0f;
+  index = (index + 1) % 4; 
+
+  return glm::vec4{offset * inv_resolution, 0.f, 0.f};
+}
+
+static glm::mat4 next_jitter_mat(uint32_t w, uint32_t h) {
+  auto offset = next_taa_offset(w, h);
+  auto m = glm::identity<glm::mat4>();
+  m[3][0] += offset.x;
+  m[3][0] += offset.y;
+  return m;
+}
 
 void get_depth_cb(ReadBackData &&image) {
   const uint32_t *word_ptr = reinterpret_cast<const uint32_t*>(image.bytes.get());
@@ -205,6 +230,7 @@ int main(int argc, char **argv) {
   load_shaders("src/shaders/config.json");
 
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
+  bool use_jitter = true;
 
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
@@ -224,6 +250,7 @@ int main(int argc, char **argv) {
   DownsamplePass downsample_pass {};
   GTAO gtao {render_graph, WIDTH, HEIGHT, USE_RAY_QUERY, 1};
   AdvancedSSR ssr {render_graph, WIDTH, HEIGHT};
+  TAA taa_pass {render_graph, WIDTH, HEIGHT};
 
   ssr.preintegrate_pdf(render_graph);
 
@@ -243,9 +270,17 @@ int main(int argc, char **argv) {
     VK_IMAGE_TILING_OPTIMAL, 
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 
-  scene::Camera camera({0.f, 1.f, -1.f});
+  auto color_out_tex = render_graph.create_image(VK_IMAGE_TYPE_2D,
+    gpu::ImageInfo {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, WIDTH, HEIGHT},
+    VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
+
+  scene::Camera camera({0.f, 1.f, -1.f});  
   glm::mat4 projection = glm::perspective(glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
   glm::mat4 shadow_mvp = glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f) * glm::lookAt(glm::vec3{-1.85867, 5.81832, -0.247114}, glm::vec3{0, 2, 1}, glm::vec3{0, -1, 0});
+
+  DrawTAAParams draw_params {};
+  draw_params.prev_mvp = projection * camera.get_view_mat();
+  draw_params.camera = camera.get_view_mat();
 
   bool quit = false;
   auto ticks = SDL_GetTicks();
@@ -274,6 +309,13 @@ int main(int argc, char **argv) {
     ticks = ticks_now;
 
     camera.move(dt);
+    draw_params.prev_mvp = draw_params.mvp;
+    draw_params.mvp = projection * camera.get_view_mat();
+    draw_params.prev_camera = draw_params.camera;
+    draw_params.camera = camera.get_view_mat();
+    draw_params.fovy_aspect_znear_zfar = glm::vec4{glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
+    draw_params.jitter = use_jitter? next_taa_offset(gbuffer.w, gbuffer.h) : glm::vec4{0.f, 0.f, 0.f, 0.f};
+
     scene_renderer.update_scene(camera.get_view_mat(), projection);
     shading_pass.update_params(camera.get_view_mat(), shadow_mvp, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
     
@@ -281,9 +323,10 @@ int main(int argc, char **argv) {
 
     SamplesMarker::clear(render_graph);
 
-    scene_renderer.draw(render_graph, gbuffer);
+    //scene_renderer.draw(render_graph, gbuffer);
+    scene_renderer.draw_taa(render_graph, gbuffer, draw_params);
     scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);    
-    downsample_pass.run(render_graph, gbuffer.normal, gbuffer.depth, gbuffer.downsampled_normals);
+    downsample_pass.run(render_graph, gbuffer.normal, gbuffer.velocity_vectors, gbuffer.depth, gbuffer.downsampled_normals, gbuffer.downsampled_velocity_vectors);
 
     ImGui::Begin("Read texture");
     bool depth = ImGui::Button("Depth") && (image_read_back == INVALID_READBACK);
@@ -293,10 +336,12 @@ int main(int argc, char **argv) {
     } else if (color) {
       image_read_back = readback_system.read_image(render_graph, gbuffer.albedo);
     }
-
+    ImGui::Checkbox("Enable jitter", &use_jitter);
     ImGui::End();
 
     ssr.render_ui();
+    gtao.draw_ui();
+
 
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
     auto camera_to_world = glm::inverse(camera.get_view_mat());
@@ -308,11 +353,12 @@ int main(int argc, char **argv) {
     ssr.run(render_graph, assr_params, gbuffer, gtao.raw);
     gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gbuffer.material, ssr.get_preintegrated_pdf());
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
-    gtao.add_accumulate_pass(render_graph, gtao_reprojection, gbuffer.depth, gbuffer.prev_depth);
+    gtao.add_accumulate_pass(render_graph, draw_params, gbuffer);
 
-    //shading_pass.draw(render_graph, gbuffer, shadows_tex, screen_trace.accumulated, render_graph.get_backbuffer());
-    add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
-    
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, color_out_tex);
+    taa_pass.run(render_graph, gbuffer, color_out_tex, draw_params);
+    add_backbuffer_subpass(render_graph, taa_pass.get_output(), sampler, DrawTex::ShowAll);
+    //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     add_present_subpass(render_graph);
     render_graph.submit();
     readback_system.after_submit(render_graph);
@@ -330,7 +376,7 @@ int main(int argc, char **argv) {
 
     render_graph.remap(gbuffer.depth, gbuffer.prev_depth);
     render_graph.remap(gtao.output, gtao.prev_frame);
-
+    taa_pass.remap_targets(render_graph);
     prev_mvp = projection * camera.get_view_mat();
   }
   

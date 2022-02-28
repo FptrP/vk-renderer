@@ -10,6 +10,7 @@ struct FrameParams {
   glm::vec4 projection_params;
   glm::mat4 projection;
   glm::mat4 camera_view;
+  glm::mat4 previous_projection;
   glm::mat4 inverse_camera_view;
   glm::mat4 normal_matrix;
 };
