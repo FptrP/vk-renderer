@@ -248,8 +248,12 @@ float mis_gtao(in ivec2 pos, in vec2 screen_uv) {
   float mis_weight = 1.0/(pdf_uniform + pdf_ggx);
 
   vec2 ao = imageLoad(gtao_out, pos).xy;
-  
-  float result = (isnan(mis_weight) || (ao.x < 0.00001))? (occlusion/pdf_uniform) : 2 * PI * (ao.x + mis_weight * occlusion)/(ao.y + mis_weight);
+  float NdotV = dot(camera_normal, w0);
+
+  float gtao = occlusion/pdf_uniform;
+  float mis_ao = 2 * PI * (ao.x + mis_weight * occlusion)/(ao.y + mis_weight);
+
+  float result = isnan(mis_weight)? (gtao) : mix(mis_ao, gtao, clamp((NdotV - 0.8) * 10, 0, 1));
   return result;
 }
 

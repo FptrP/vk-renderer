@@ -287,7 +287,7 @@ vec3 hierarchical_raymarch_find_hor(in sampler2D depth_tex, vec3 origin, vec3 di
     float v_len = length(v);
     v = (v_len > 0.001)? v/v_len : vec3(0);
 
-    if (next_z < prev_z + 0.3 && current_mip == 0 && v_len < 0.5) {
+    if (next_z < prev_z + 0.5 && current_mip == 0 && v_len < 0.5) {
       prev_z = next_z;
       h = max(h, dot(w0, v));
     }
