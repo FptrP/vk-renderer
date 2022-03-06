@@ -253,6 +253,7 @@ int main(int argc, char **argv) {
   TAA taa_pass {render_graph, WIDTH, HEIGHT};
 
   ssr.preintegrate_pdf(render_graph);
+  ssr.preintegrate_brdf(render_graph);
 
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
@@ -341,7 +342,7 @@ int main(int argc, char **argv) {
 
     ssr.render_ui();
     gtao.draw_ui();
-
+    shading_pass.draw_ui();
 
     auto normal_mat = glm::transpose(glm::inverse(camera.get_view_mat()));
     auto camera_to_world = glm::inverse(camera.get_view_mat());
@@ -350,15 +351,16 @@ int main(int argc, char **argv) {
     GTAOReprojection gtao_reprojection {prev_mvp * glm::inverse(camera.get_view_mat()), glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     AdvancedSSRParams assr_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};    
     
-    ssr.run(render_graph, assr_params, gbuffer, gtao.raw);
+    ssr.run(render_graph, assr_params, draw_params, gbuffer, gtao.raw);
     gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gbuffer.material, ssr.get_preintegrated_pdf());
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     gtao.add_accumulate_pass(render_graph, draw_params, gbuffer);
 
-    shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, color_out_tex);
+    shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, ssr.get_preintegrated_brdf(), ssr.get_blurred(), color_out_tex);
     taa_pass.run(render_graph, gbuffer, color_out_tex, draw_params);
     add_backbuffer_subpass(render_graph, taa_pass.get_output(), sampler, DrawTex::ShowAll);
     //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
+    //add_backbuffer_subpass(render_graph, ssr.get_blurred(), sampler, DrawTex::ShowAll);
     add_present_subpass(render_graph);
     render_graph.submit();
     readback_system.after_submit(render_graph);
@@ -377,6 +379,7 @@ int main(int argc, char **argv) {
     render_graph.remap(gbuffer.depth, gbuffer.prev_depth);
     render_graph.remap(gtao.output, gtao.prev_frame);
     taa_pass.remap_targets(render_graph);
+    ssr.remap_images(render_graph);
     prev_mvp = projection * camera.get_view_mat();
   }
   

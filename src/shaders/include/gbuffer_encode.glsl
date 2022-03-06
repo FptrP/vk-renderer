@@ -28,12 +28,11 @@ vec2 encode_normal(in vec3 v)
 
 vec3 decode_normal(in vec2 uv)
 {
-  uv = 2.f * (uv - vec2(0.5f, 0.5f));
+  uv = 2.f * uv - vec2(1.f, 1.f);
   vec3 v = vec3(uv.x, uv.y, 1.0 - abs(uv.x) - abs(uv.y));
   if (v.z < 0.0) {
     v.xy = (1.0 - abs(v.yx)) * sign_nz(v.xy);
   }
-
   return normalize(v);
 }
 
@@ -43,6 +42,13 @@ vec3 sample_gbuffer_normal(in sampler2D normal_tex, in vec2 uv)
   return decode_normal(t); 
 }
 
+vec3 sample_gbuffer_normal_accurate(in sampler2D normal_tex, in vec2 uv)
+{
+  vec4 u = textureGather(normal_tex, uv, 0);
+  vec4 v = textureGather(normal_tex, uv, 1);
+  vec2 t = 0.25 * vec2(dot(u, vec4(1, 1, 1, 1)), dot(v, vec4(1, 1, 1, 1)));
+  return decode_normal(t); 
+}
 
 float linearize_depth2(float d, float n, float f)
 {

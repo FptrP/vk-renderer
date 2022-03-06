@@ -13,7 +13,8 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
   uint32_t depth_mips = std::floor(std::log2(std::max(width, height))) + 1;
 
   gpu::ImageInfo albedo_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
-  gpu::ImageInfo normal_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+  gpu::ImageInfo normal_info {VK_FORMAT_R16G16_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
+  gpu::ImageInfo velocity_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo mat_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, width, height};
   gpu::ImageInfo depth_info {
     VK_FORMAT_D24_UNORM_S8_UINT, 
@@ -27,12 +28,15 @@ Gbuffer::Gbuffer(rendergraph::RenderGraph &graph, uint32_t width, uint32_t heigh
 
   albedo = graph.create_image(VK_IMAGE_TYPE_2D, albedo_info, tiling, color_usage);
   normal = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
-  velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
+  velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, velocity_info, tiling, color_usage);
 
   normal_info.width /= 2;
   normal_info.height /= 2;
+  velocity_info.width /= 2;
+  velocity_info.height /= 2;
+
   downsampled_normals = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
-  downsampled_velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, normal_info, tiling, color_usage);
+  downsampled_velocity_vectors = graph.create_image(VK_IMAGE_TYPE_2D, velocity_info, tiling, color_usage);
   
   material = graph.create_image(VK_IMAGE_TYPE_2D, mat_info, tiling, color_usage);
   depth = graph.create_image(VK_IMAGE_TYPE_2D, depth_info, tiling, depth_usage);
@@ -59,7 +63,7 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   opaque_pipeline.set_vertex_input(scene::get_vertex_input());    
   opaque_pipeline.set_rendersubpass({true, {
     VK_FORMAT_R8G8B8A8_SRGB, 
-    VK_FORMAT_R16G16_SFLOAT,
+    VK_FORMAT_R16G16_UNORM,
     VK_FORMAT_R8G8B8A8_SRGB,
     VK_FORMAT_D24_UNORM_S8_UINT
   }});
@@ -70,7 +74,7 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   opaque_taa_pipeline.set_vertex_input(scene::get_vertex_input());    
   opaque_taa_pipeline.set_rendersubpass({true, {
     VK_FORMAT_R8G8B8A8_SRGB, 
-    VK_FORMAT_R16G16_SFLOAT,
+    VK_FORMAT_R16G16_UNORM,
     VK_FORMAT_R8G8B8A8_SRGB,
     VK_FORMAT_R16G16_SFLOAT,
     VK_FORMAT_D24_UNORM_S8_UINT

@@ -44,7 +44,14 @@ void DeferedShadingPass::update_params(const glm::mat4 &camera, const glm::mat4 
   gpu_transfer::write_buffer(ubo_consts, 0, sizeof(ShaderConstants), &consts);
 }
 
-void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const rendergraph::ImageResourceId &shadow, const rendergraph::ImageResourceId &ssao, const rendergraph::ImageResourceId &out_image) {
+void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, 
+  const Gbuffer &gbuffer,
+  rendergraph::ImageResourceId shadow,
+  rendergraph::ImageResourceId ssao,
+  rendergraph::ImageResourceId brdf_tex,
+  rendergraph::ImageResourceId reflections,
+  rendergraph::ImageResourceId out_image)
+{
   struct PassData {
     rendergraph::ImageViewId albedo;
     rendergraph::ImageViewId normal;
@@ -53,9 +60,15 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
     rendergraph::ImageViewId rt;
     rendergraph::ImageViewId shadow;
     rendergraph::ImageViewId ssao;
+    rendergraph::ImageViewId ssr;
+    rendergraph::ImageViewId brdf;
     rendergraph::BufferResourceId ubo;
   };
-  
+
+  struct PushConsts {
+    glm::vec2 min_max_roughness;
+  };
+  PushConsts pc {min_max_roughness};
   pipeline.set_rendersubpass({false, {graph.get_descriptor(out_image).format}});
 
   graph.add_task<PassData>("DeferedShading",
@@ -67,6 +80,8 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       input.rt = builder.use_color_attachment(out_image, 0, 0);
       input.shadow = builder.sample_image(shadow, VK_SHADER_STAGE_FRAGMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1);
       input.ssao = builder.sample_image(ssao, VK_SHADER_STAGE_FRAGMENT_BIT);
+      input.ssr = builder.sample_image(reflections, VK_SHADER_STAGE_FRAGMENT_BIT);
+      input.brdf = builder.sample_image(brdf_tex, VK_SHADER_STAGE_FRAGMENT_BIT);
       input.ubo = ubo_consts;
       builder.use_uniform_buffer(input.ubo, VK_SHADER_STAGE_VERTEX_BIT);
     },
@@ -81,7 +96,9 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
         gpu::TextureBinding {3, resources.get_view(input.depth), sampler},
         gpu::UBOBinding {4, resources.get_buffer(input.ubo)}, 
         gpu::TextureBinding {5, resources.get_view(input.shadow), sampler},
-        gpu::TextureBinding {6, resources.get_view(input.ssao), sampler});
+        gpu::TextureBinding {6, resources.get_view(input.ssao), sampler},
+        gpu::TextureBinding {7, resources.get_view(input.brdf), sampler},
+        gpu::TextureBinding {8, resources.get_view(input.ssr), sampler});
       
       const auto &image_info = resources.get_image(input.rt).get_info();
       auto w = image_info.width;
@@ -92,8 +109,16 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph, const Gbuffer &gb
       cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);
       cmd.bind_scissors(0, 0, w, h);
       cmd.bind_descriptors_graphics(0, {set}, {0});
+      cmd.push_constants_graphics(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
       cmd.draw(3, 1, 0, 0);
       //imgui_draw(cmd.get_command_buffer());
       cmd.end_renderpass();
     }); 
+}
+
+void DeferedShadingPass::draw_ui() {
+  ImGui::Begin("DeferedShading");
+  ImGui::SliderFloat("Max Roughness", &min_max_roughness.y, min_max_roughness.x, 1.f);
+  ImGui::SliderFloat("Min Roughness", &min_max_roughness.x, 0.f, min_max_roughness.y);
+  ImGui::End();
 }

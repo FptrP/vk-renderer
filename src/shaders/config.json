@@ -116,6 +116,9 @@
   "pdf_preintegrate" : {
     "compute" : "advanced_ssr/preintegrate_comp"
   },
+  "brdf_preintegrate" : {
+    "compute" : "advanced_ssr/preintegrate_ssr_comp"
+  },
   "taa_resolve" : {
     "compute" : "taa/resolve_comp"
   }

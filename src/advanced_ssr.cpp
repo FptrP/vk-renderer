@@ -49,6 +49,7 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
 
   tile_regression = gpu::create_compute_pipeline("tile_regression");
   preintegrate_pass = gpu::create_compute_pipeline("pdf_preintegrate");
+  preintegrate_brdf_pass = gpu::create_compute_pipeline("brdf_preintegrate");
 
   auto halton_samples = halton23_seq(HALTON_SEQ_SIZE);
   const uint64_t bytes = sizeof(halton_samples[0]) * HALTON_SEQ_SIZE;
@@ -67,7 +68,8 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
 
   gpu::ImageInfo blurred_info {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   blurred_reflection = graph.create_image(VK_IMAGE_TYPE_2D, blurred_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
-
+  blurred_reflection_history = graph.create_image(VK_IMAGE_TYPE_2D, blurred_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+  
   sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
 
   const auto indirect_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -83,6 +85,9 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
 
   gpu::ImageInfo pdf_info {VK_FORMAT_R32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, 1024, 1024};
   preintegrated_pdf = graph.create_image(VK_IMAGE_TYPE_2D, pdf_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
+
+  gpu::ImageInfo brdf_info {VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, 1024, 1024};
+  preintegrated_brdf = graph.create_image(VK_IMAGE_TYPE_2D, brdf_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
 }
 
 void AdvancedSSR::preintegrate_pdf(rendergraph::RenderGraph &graph) {
@@ -102,6 +107,28 @@ void AdvancedSSR::preintegrate_pdf(rendergraph::RenderGraph &graph) {
       auto extent = resources.get_image(input.out_pdf).get_extent();
       cmd.bind_pipeline(preintegrate_pass);
       cmd.bind_descriptors_compute(0, {set});
+      cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
+    });
+}
+
+void AdvancedSSR::preintegrate_brdf(rendergraph::RenderGraph &graph) {
+  struct Input {
+    rendergraph::ImageViewId out_brdf;
+  };
+
+  graph.add_task<Input>("BRDF_preintegrate",
+    [&](Input &input, rendergraph::RenderGraphBuilder &builder){
+      input.out_brdf = builder.use_storage_image(preintegrated_brdf, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
+    },
+    [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto set = resources.allocate_set(preintegrate_brdf_pass, 0);
+      gpu::write_set(set, 
+        gpu::UBOBinding {0, halton_buffer},
+        gpu::StorageTextureBinding {1, resources.get_view(input.out_brdf)});
+
+      auto extent = resources.get_image(input.out_brdf).get_extent();
+      cmd.bind_pipeline(preintegrate_brdf_pass);
+      cmd.bind_descriptors_compute(0, {set}, {0});
       cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
     });
 }
@@ -342,6 +369,7 @@ void AdvancedSSR::run_filter_pass(
 void AdvancedSSR::run_blur_pass(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
+  const DrawTAAParams &taa_params,
   const Gbuffer &gbuff)
 {
   struct Input {
@@ -349,6 +377,9 @@ void AdvancedSSR::run_blur_pass(
     rendergraph::ImageViewId normal;
     rendergraph::ImageViewId material;
     rendergraph::ImageViewId reflections;
+    rendergraph::ImageViewId history;
+    rendergraph::ImageViewId velocity;
+    rendergraph::ImageViewId history_depth;
     rendergraph::ImageViewId result;
   };
   
@@ -357,7 +388,15 @@ void AdvancedSSR::run_blur_pass(
     uint32_t accumulate;
     uint32_t disable_blur;
   };
+
+  struct Params {
+    glm::mat4 inverse_camera;
+    glm::mat4 prev_inverse_camera;
+    glm::vec4 fovy_aspect_znear_zfar;
+  };
+
   PushConstants pc {settings.max_rougness, settings.accumulate_reflections, !settings.use_blur}; 
+  Params buf {glm::inverse(taa_params.camera), glm::inverse(taa_params.prev_camera), taa_params.fovy_aspect_znear_zfar};
 
   graph.add_task<Input>("SSSR_blur",
     [&](Input &input, rendergraph::RenderGraphBuilder &builder){
@@ -365,20 +404,32 @@ void AdvancedSSR::run_blur_pass(
       input.normal = builder.sample_image(gbuff.normal, VK_SHADER_STAGE_COMPUTE_BIT);
       input.reflections = builder.sample_image(reflections, VK_SHADER_STAGE_COMPUTE_BIT);
       input.material = builder.sample_image(gbuff.material, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.history = builder.sample_image(blurred_reflection_history, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.velocity = builder.sample_image(gbuff.downsampled_velocity_vectors, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.history_depth = builder.sample_image(gbuff.prev_depth, VK_SHADER_STAGE_COMPUTE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 10, 0, 1);
       input.result = builder.use_storage_image(blurred_reflection, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
+      auto blk = cmd.allocate_ubo<Params>();
+      *blk.ptr = buf;
+      
       auto set = resources.allocate_set(blur_pass, 0);
+
       gpu::write_set(set, 
         gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
         gpu::TextureBinding {1, resources.get_view(input.normal), sampler},
         gpu::TextureBinding {2, resources.get_view(input.reflections), sampler},
         gpu::TextureBinding {3, resources.get_view(input.material), sampler},
-        gpu::StorageTextureBinding {4, resources.get_view(input.result)});
+        gpu::TextureBinding {4, resources.get_view(input.history), sampler},
+        gpu::TextureBinding {5, resources.get_view(input.velocity), sampler},
+        gpu::TextureBinding {6, resources.get_view(input.history_depth), sampler},
+        gpu::StorageTextureBinding {7, resources.get_view(input.result)},
+        gpu::UBOBinding {8, cmd.get_ubo_pool(), blk}
+      );
       
       auto ext = resources.get_image(input.result).get_extent();
       cmd.bind_pipeline(blur_pass);
-      cmd.bind_descriptors_compute(0, {set});
+      cmd.bind_descriptors_compute(0, {set}, {blk.offset});
       cmd.push_constants_compute(0, sizeof(pc), &pc);
       cmd.dispatch((ext.width + 7)/8, (ext.height + 7)/8, 1);
     });
@@ -487,6 +538,7 @@ void AdvancedSSR::run_tile_regression_pass(
 void AdvancedSSR::run(
   rendergraph::RenderGraph &graph,
   const AdvancedSSRParams &params,
+  const DrawTAAParams &taa_params,
   const Gbuffer &gbuff,
   rendergraph::ImageResourceId ssr_occlusion)
 {
@@ -496,7 +548,7 @@ void AdvancedSSR::run(
   //run_trace_indirect_pass(graph, params, gbuff);
   run_trace_pass(graph, params, gbuff, ssr_occlusion);
   run_filter_pass(graph, params, gbuff);
-  run_blur_pass(graph, params, gbuff);
+  run_blur_pass(graph, params, taa_params, gbuff);
 }
 
 void AdvancedSSR::render_ui() {

@@ -21,16 +21,21 @@ struct AdvancedSSR {
   void run(
     rendergraph::RenderGraph &graph,
     const AdvancedSSRParams &params,
+    const DrawTAAParams &taa_params,
     const Gbuffer &gbuff,
     rendergraph::ImageResourceId ssr_occlusion);
 
   void preintegrate_pdf(rendergraph::RenderGraph &graph);
+  void preintegrate_brdf(rendergraph::RenderGraph &graph);
+  void remap_images(rendergraph::RenderGraph &graph) { graph.remap(blurred_reflection, blurred_reflection_history); }
 
   rendergraph::ImageResourceId get_ouput() const { return reflections; }
   rendergraph::ImageResourceId get_rays() const { return rays; }
   rendergraph::ImageResourceId get_blurred() const { return blurred_reflection; }
   rendergraph::ImageResourceId get_occlusion() const { return rays_occlusion; }
   rendergraph::ImageResourceId get_preintegrated_pdf() const { return preintegrated_pdf; }
+  rendergraph::ImageResourceId get_preintegrated_brdf() const { return preintegrated_brdf; }
+
 private:
   gpu::Buffer halton_buffer;
 
@@ -46,16 +51,19 @@ private:
   gpu::ComputePipeline trace_indirect_pass;
   gpu::ComputePipeline tile_regression;
   gpu::ComputePipeline preintegrate_pass;
-  
+  gpu::ComputePipeline preintegrate_brdf_pass;
+
   VkSampler sampler;
 
   rendergraph::ImageResourceId rays;
   rendergraph::ImageResourceId reflections;
   rendergraph::ImageResourceId blurred_reflection;
+  rendergraph::ImageResourceId blurred_reflection_history;
   rendergraph::ImageResourceId tile_planes;
   rendergraph::ImageResourceId rays_occlusion;
   rendergraph::ImageResourceId preintegrated_pdf;
-  
+  rendergraph::ImageResourceId preintegrated_brdf;
+
   uint32_t counter {0u};
 
   struct {
@@ -88,6 +96,7 @@ private:
   void run_blur_pass(
     rendergraph::RenderGraph &graph,
     const AdvancedSSRParams &params,
+    const DrawTAAParams &taa_params,
     const Gbuffer &gbuff);
   
   void run_classification_pass(

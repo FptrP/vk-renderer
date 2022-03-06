@@ -51,7 +51,7 @@ void main() {
   ivec2 tex_size = ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
   ivec2 pixel_pos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
   
-  vec2 screen_uv = vec2(pixel_pos)/vec2(tex_size);
+  vec2 screen_uv = vec2(pixel_pos + vec2(0.5, 0.5))/vec2(tex_size);
   float occlusion = 0;
   
   if (use_mis > 0) {
@@ -253,7 +253,7 @@ float mis_gtao(in ivec2 pos, in vec2 screen_uv) {
   float gtao = occlusion/pdf_uniform;
   float mis_ao = 2 * PI * (ao.x + mis_weight * occlusion)/(ao.y + mis_weight);
 
-  float result = isnan(mis_weight)? (gtao) : mix(mis_ao, gtao, clamp((NdotV - 0.8) * 10, 0, 1));
+  float result = isnan(mis_weight)? (gtao) : mix(mis_ao, gtao, clamp((NdotV - 0.7) * 10, 0, 1));
   return result;
 }
 

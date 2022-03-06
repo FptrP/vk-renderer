@@ -24,8 +24,14 @@ layout (set = 0, binding = 4) uniform Constants {
 
 layout (set = 0, binding = 5) uniform sampler2D shadow_map;
 layout (set = 0, binding = 6) uniform sampler2D occlusion_tex;
+layout (set = 0, binding = 7) uniform sampler2D brdf_tex;
+layout (set = 0, binding = 8) uniform sampler2D reflections_tex;
 
-float sample_ocllusion(float depth, vec2 screen_uv);
+layout (push_constant) uniform PushConsts {
+  vec2 min_max_rougness;
+};
+
+vec4 sample_ocllusion_ssr(float depth, vec2 screen_uv);
 
 const vec3 LIGHT_POS = vec3(-1.85867, 5.81832, -0.247114);
 const vec3 LIGHT_RADIANCE = vec3(0.1, 0.1, 0.1);
@@ -38,8 +44,9 @@ void main() {
   float depth = textureLod(depth_tex, screen_uv, 0).r;
 #if USE_OCCLUSION
   //vec4 trace_res = texture(occlusion_tex, screen_uv);
-  float occlusion = sample_ocllusion(depth, screen_uv);
-  vec3 reflection = vec3(0);
+  vec4 ssr_occlusion = sample_ocllusion_ssr(depth, screen_uv);
+  float occlusion = ssr_occlusion.w;
+  vec3 reflection = ssr_occlusion.xyz;
 #else
   vec3 reflection = vec3(0);
   float occlusion = 1;
@@ -48,7 +55,7 @@ void main() {
   vec3 world_pos = (inverse_camera * vec4(camera_view_vec, 1)).xyz;
   vec3 camera_pos = (inverse_camera * vec4(0, 0, 0, 1)).xyz;
 
-  const float metallic = material.b;
+  const float metallic = mix(0.1, 1.0, material.b);
   const float roughness = material.g;
 
   const vec3 V = normalize(camera_pos - world_pos);
@@ -77,15 +84,18 @@ void main() {
 
   
   vec3 specular = (NDF * G * F)/(4.0 * NdotV * NdotL + 0.0001);
+  float biased_rougness = mix(min_max_rougness.x, min_max_rougness.y, roughness);
+  vec2 ssr_brdf = texture(brdf_tex, vec2(biased_rougness, NdotV)).xy;
 
   Lo += (kD * albedo/PI + specular) * radiance * NdotL;
+  Lo += reflection * (F0 * ssr_brdf.x + vec3(ssr_brdf.y));
   vec3 color = occlusion * (vec3(0.6) * albedo + Lo);
   
-  //out_color = vec4(color, 0);
-  out_color = vec4(occlusion, occlusion, occlusion, 0);
+  out_color = vec4(color, 0);
+  //out_color = vec4(occlusion, occlusion, occlusion, 0);
 }
 
-float sample_ocllusion(float depth, vec2 screen_uv) {
+vec4 sample_ocllusion_ssr(float depth, vec2 screen_uv) {
   
   vec4 lowres_depth;
   lowres_depth.x = textureLodOffset(depth_tex, screen_uv, 1, ivec2(0, 0)).x;
@@ -96,14 +106,20 @@ float sample_ocllusion(float depth, vec2 screen_uv) {
   vec4 delta = abs(lowres_depth - vec4(depth));
   float min_delta = min(min(delta.x, delta.y), min(delta.z, delta.w));
   
+  vec4 result = vec4(0, 0, 0, 0);
+
   if (min_delta == delta.x) {
-    return textureOffset(occlusion_tex, screen_uv, ivec2(0, 0)).x;
+    result.w = textureOffset(occlusion_tex, screen_uv, ivec2(0, 0)).x;
+    result.xyz = textureOffset(reflections_tex, screen_uv, ivec2(0, 0)).xyz;
   } else if (min_delta == delta.y) {
-    return textureOffset(occlusion_tex, screen_uv, ivec2(1, 0)).x;
+    result.w =  textureOffset(occlusion_tex, screen_uv, ivec2(1, 0)).x;
+    result.xyz = textureOffset(reflections_tex, screen_uv, ivec2(1, 0)).xyz;
   } else if (min_delta == delta.z) {
-    return textureOffset(occlusion_tex, screen_uv, ivec2(0, 1)).x;
+    result.w =  textureOffset(occlusion_tex, screen_uv, ivec2(0, 1)).x;
+    result.xyz = textureOffset(reflections_tex, screen_uv, ivec2(0, 1)).xyz;
   } else {
-    return textureOffset(occlusion_tex, screen_uv, ivec2(1, 1)).x;
+    result.w = textureOffset(occlusion_tex, screen_uv, ivec2(1, 1)).x;
+    result.xyz = textureOffset(reflections_tex, screen_uv, ivec2(1, 1)).xyz;
   }
-  return 1.0;
+  return result;
 }

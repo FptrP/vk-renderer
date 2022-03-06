@@ -58,7 +58,7 @@ void main() {
     const float MIN_REPROJECTION_EPS = 0.01;
     float error = length(v_world_cur - v_world_prev);
     float pixel_dist = length(v_world_cur - v_camera);
-    reprojected = (error < clamp(0.1 * pixel_dist, MIN_REPROJECTION_EPS, MAX_REPROJECTION_EPS)); 
+    reprojected = (delta_len < 0.005) || (error < clamp(0.1 * pixel_dist * delta_len, MIN_REPROJECTION_EPS, MAX_REPROJECTION_EPS)); 
   }
 
 
