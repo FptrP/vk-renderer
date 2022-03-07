@@ -81,13 +81,11 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   sampler = gpu::create_sampler(sampler_info);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
-  scene_image_views.reserve(target.images.size());
   scene_textures.reserve(target.images.size());
   for (auto &elem : target.images) {
     gpu::ImageViewRange range {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
     range.mips_count = elem.get_mip_levels();
     auto view = elem.get_view(range);
-    scene_image_views.push_back(view);
     scene_textures.push_back({view, sampler});
   }
 }
@@ -178,7 +176,7 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
       auto blk = cmd.allocate_ubo<GbufConst>();
       *blk.ptr = consts;
 
-      auto set = resources.allocate_set(opaque_taa_pipeline, 0, {0, 0, (uint32_t)scene_textures.size()});
+      auto set = resources.allocate_set(opaque_taa_pipeline, 0, {(uint32_t)scene_textures.size()});
 
       gpu::write_set(set, 
         gpu::UBOBinding {0, cmd.get_ubo_pool(), blk},

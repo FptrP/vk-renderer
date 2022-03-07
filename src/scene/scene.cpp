@@ -434,6 +434,8 @@ namespace scene {
     prim.index_count = index_count;
     prim.vertex_offset = vertex_start;
     prim.index_offset = first_index;
+
+    std::cout << "Proccessed prim " << prim.vertex_offset << " " << prim.index_offset << " " << prim.index_count << "\n";
     return prim;
   } 
 

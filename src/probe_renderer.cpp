@@ -102,7 +102,7 @@ void ProbeRenderer::render_side(rendergraph::RenderGraph &graph, SceneRenderer &
   };
 
   //ShaderUbo ubo_data {view, glm::perspective(glm::radians(90.f), 1.f, 0.05f, 80.f)};
-
+  /* TODO: Use new bindless textures
   graph.add_task<Res>("CubemapSide",
     [&](Res &res, rendergraph::RenderGraphBuilder &builder) {
       res.color = builder.use_color_attachment(cubemap_color, 0, side);
@@ -165,7 +165,7 @@ void ProbeRenderer::render_side(rendergraph::RenderGraph &graph, SceneRenderer &
 
 
       cmd.end_renderpass();
-    });
+    });*/
 }
 
 void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_color, rendergraph::ImageResourceId probe_depth, uint32_t array_layer) {

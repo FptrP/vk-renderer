@@ -47,7 +47,6 @@ struct SceneRenderer {
   };
   
   const std::vector<DrawCall> &get_drawcalls() const { return draw_calls; }
-  const std::vector<VkImageView> &get_images() const { return scene_image_views; }
   
   rendergraph::BufferResourceId get_scene_transforms() const { return transform_buffer; }
   const scene::CompiledScene &get_target() const { return target; }
@@ -57,7 +56,6 @@ private:
   gpu::GraphicsPipeline opaque_taa_pipeline;
   gpu::GraphicsPipeline shadow_pipeline;
 
-  std::vector<VkImageView> scene_image_views;
   std::vector<std::pair<VkImageView, VkSampler>> scene_textures;
   std::vector<DrawCall> draw_calls;
   VkSampler sampler;
