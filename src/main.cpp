@@ -238,7 +238,7 @@ int main(int argc, char **argv) {
 
   gpu::TransferCmdPool transfer_pool {};
   auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
-
+  scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/Sponza/glTF/Sponza.gltf", USE_RAY_QUERY);
 #if USE_RAY_QUERY
   scene::SceneAccelerationStructure acceleration_struct;
   acceleration_struct.build(transfer_pool, scene);
