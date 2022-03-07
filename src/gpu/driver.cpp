@@ -188,6 +188,11 @@ namespace gpu {
     features.fragmentStoresAndAtomics = VK_TRUE;
     features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     
+    VkPhysicalDeviceDescriptorIndexingFeatures bindless_features {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+      .pNext = nullptr
+    };
+
     VkPhysicalDeviceBufferDeviceAddressFeatures device_adders {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
       nullptr,
@@ -209,9 +214,12 @@ namespace gpu {
     acceleration_structure.pNext = &ray_query_featrues;
     device_adders.pNext = &acceleration_structure;
 
+    bindless_features.runtimeDescriptorArray = VK_TRUE;
+    bindless_features.pNext = cfg.use_ray_query? &device_adders : nullptr;
+
     VkDeviceCreateInfo info {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = cfg.use_ray_query? &device_adders : nullptr,
+      .pNext = &bindless_features,
       .flags = 0,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = queues,
