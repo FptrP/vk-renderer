@@ -44,6 +44,8 @@ namespace rendergraph {
     std::vector<gpu::Image> take_backbuffers() { return gpu::get_swapchain_images(); }
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return desc_pool.allocate_set(layout); }
+    VkDescriptorSet allocate_set(VkDescriptorSetLayout layout, const std::vector<uint32_t> &variable_sizes) { return desc_pool.allocate_set(layout, variable_sizes); }
+    
     VkEvent allocate_event() { return event_pool.allocate(); }
     
     uint32_t get_frames_count() const { return frames_count; }

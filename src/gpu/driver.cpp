@@ -186,6 +186,7 @@ namespace gpu {
 
     VkPhysicalDeviceFeatures features {};
     features.fragmentStoresAndAtomics = VK_TRUE;
+    features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     
     VkPhysicalDeviceBufferDeviceAddressFeatures device_adders {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,

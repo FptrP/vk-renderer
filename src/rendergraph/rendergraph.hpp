@@ -62,8 +62,11 @@ namespace rendergraph {
     VkImageView get_view(const ImageViewId &ref);
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
+    VkDescriptorSet allocate_set(VkDescriptorSetLayout layout, const std::vector<uint32_t> &sizes) { return gpu.allocate_set(layout, sizes); }
     VkDescriptorSet allocate_set(const gpu::GraphicsPipeline &p, uint32_t index) { return gpu.allocate_set(p.get_layout(index)); }
     VkDescriptorSet allocate_set(const gpu::ComputePipeline &p, uint32_t index) { return gpu.allocate_set(p.get_layout(index)); }
+    VkDescriptorSet allocate_set(const gpu::GraphicsPipeline &p, uint32_t index, const std::vector<uint32_t> &sizes) { return gpu.allocate_set(p.get_layout(index), sizes); }
+    VkDescriptorSet allocate_set(const gpu::ComputePipeline &p, uint32_t index, const std::vector<uint32_t> &sizes) { return gpu.allocate_set(p.get_layout(index), sizes); }
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}

@@ -163,6 +163,22 @@ namespace gpu {
       desc_write.pImageInfo = view_info.data();
     }
 
+    ArrayOfImagesBinding(uint32_t binding, const std::vector<std::pair<VkImageView, VkSampler>> &src)
+      : BaseBinding {binding, 0, (uint32_t)src.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER}
+    {
+      view_info.reserve(src.size());
+      for (auto elem : src) {
+        VkDescriptorImageInfo info {
+          .sampler = elem.second,
+          .imageView = elem.first,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+        view_info.push_back(info);
+      }
+
+      desc_write.pImageInfo = view_info.data();
+    }
+
   private:
     std::vector<VkDescriptorImageInfo> view_info;
   };

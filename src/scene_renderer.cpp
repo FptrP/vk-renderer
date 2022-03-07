@@ -56,17 +56,6 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   gpu::Registers regs {};
   regs.depth_stencil.depthTestEnable = VK_TRUE;
   regs.depth_stencil.depthWriteEnable = VK_TRUE;
-  
-  opaque_pipeline = gpu::create_graphics_pipeline();
-  opaque_pipeline.set_program("gbuf_opaque");
-  opaque_pipeline.set_registers(regs);
-  opaque_pipeline.set_vertex_input(scene::get_vertex_input());    
-  opaque_pipeline.set_rendersubpass({true, {
-    VK_FORMAT_R8G8B8A8_SRGB, 
-    VK_FORMAT_R16G16_UNORM,
-    VK_FORMAT_R8G8B8A8_SRGB,
-    VK_FORMAT_D24_UNORM_S8_UINT
-  }});
 
   opaque_taa_pipeline = gpu::create_graphics_pipeline();
   opaque_taa_pipeline.set_program("gbuf_opaque_taa");
@@ -90,21 +79,16 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
   sampler = gpu::create_sampler(sampler_info);
-
-  view_proj_buffer = graph.create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, sizeof(GbufConst), VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
   scene_image_views.reserve(target.images.size());
-
+  scene_textures.reserve(target.images.size());
   for (auto &elem : target.images) {
     gpu::ImageViewRange range {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
     range.mips_count = elem.get_mip_levels();
     auto view = elem.get_view(range);
     scene_image_views.push_back(view);
-  }
-
-  while (scene_image_views.size() != 64) {
-    scene_image_views.push_back(scene_image_views.front());
+    scene_textures.push_back({view, sampler});
   }
 }
 
@@ -126,24 +110,13 @@ static void node_process(const scene::Node &node, std::vector<SceneRenderer::Dra
   }
 }
 
-void SceneRenderer::update_scene(const glm::mat4 &camera, const glm::mat4 &projection) {
+void SceneRenderer::update_scene() {
   auto identity = glm::identity<glm::mat4>();
   std::vector<glm::mat4> transforms;
 
   draw_calls.clear();
   
   node_process(*target.root, draw_calls, transforms, identity);
-
-  GbufConst consts {
-    camera,
-    projection,
-    glm::radians(60.f),
-    16.f/9.f,
-    0.05,
-    80.f
-  };
-
-  gpu_transfer::write_buffer(view_proj_buffer, 0, sizeof(consts), &consts);
   gpu_transfer::write_buffer(transform_buffer, 0, sizeof(glm::mat4) * transforms.size(), transforms.data());
 }
 
@@ -153,77 +126,6 @@ struct PushData {
   uint32_t mr_index;
   uint32_t flags;
 };
-
-void SceneRenderer::draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer) {
-  
-  struct Data {
-    rendergraph::ImageViewId albedo;
-    rendergraph::ImageViewId normal;
-    rendergraph::ImageViewId material;
-    rendergraph::ImageViewId depth;
-  };
-  
-  graph.add_task<Data>("GbufferPass",
-    [&](Data &input, rendergraph::RenderGraphBuilder &builder){
-      input.albedo = builder.use_color_attachment(gbuffer.albedo, 0, 0);
-      input.normal = builder.use_color_attachment(gbuffer.normal, 0, 0);
-      input.material = builder.use_color_attachment(gbuffer.material, 0, 0);
-      input.depth = builder.use_depth_attachment(gbuffer.depth, 0, 0);
-
-      builder.use_uniform_buffer(view_proj_buffer, VK_SHADER_STAGE_VERTEX_BIT);
-      builder.use_storage_buffer(transform_buffer, VK_SHADER_STAGE_VERTEX_BIT);
-    },
-    [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      cmd.set_framebuffer(gbuffer.w, gbuffer.h, {
-        resources.get_view(input.albedo),
-        resources.get_view(input.normal),
-        resources.get_view(input.material),
-        resources.get_view(input.depth)
-      });
-
-      auto vbuf = target.vertex_buffer.get_api_buffer();
-      auto ibuf = target.index_buffer.get_api_buffer();
-      
-      cmd.bind_pipeline(opaque_pipeline);
-      cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
-      cmd.clear_depth_attachment(1.f);
-      cmd.bind_viewport(0.f, 0.f, gbuffer.w, gbuffer.h, 0.f, 1.f);
-      cmd.bind_scissors(0, 0, gbuffer.w, gbuffer.h);
-      cmd.bind_vertex_buffers(0, {vbuf}, {0ul});
-      cmd.bind_index_buffer(ibuf, 0, VK_INDEX_TYPE_UINT32);
-      
-      auto set = resources.allocate_set(opaque_pipeline.get_layout(0));
-      gpu::write_set(set, 
-        gpu::UBOBinding {0, resources.get_buffer(view_proj_buffer)},
-        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
-        gpu::ArrayOfImagesBinding {2, scene_image_views},
-        gpu::SamplerBinding {3, sampler});
-
-      cmd.bind_descriptors_graphics(0, {set}, {0});
-
-      for (const auto &draw_call : draw_calls) {
-        const auto &mesh = target.meshes[draw_call.mesh];
-        const auto &material = target.materials[mesh.material_index];
-
-        if (material.albedo_tex_index == scene::INVALID_TEXTURE) {
-          continue;
-        }
-
-        PushData pc {};
-        pc.transform_index = draw_call.transform;
-        pc.albedo_index = material.albedo_tex_index;
-        pc.mr_index = material.metalic_roughness_index;
-        pc.flags = material.clip_alpha? 0xff : 0;
-        
-        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
-        cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
-      }
-
-
-      cmd.end_renderpass();
-      
-    });
-}
 
 void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const DrawTAAParams &params) {
    struct Data {
@@ -276,20 +178,20 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
       auto blk = cmd.allocate_ubo<GbufConst>();
       *blk.ptr = consts;
 
-      auto set = resources.allocate_set(opaque_taa_pipeline.get_layout(0));
+      auto set = resources.allocate_set(opaque_taa_pipeline, 0, {0, 0, (uint32_t)scene_textures.size()});
+
       gpu::write_set(set, 
         gpu::UBOBinding {0, cmd.get_ubo_pool(), blk},
         gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
-        gpu::ArrayOfImagesBinding {2, scene_image_views},
-        gpu::SamplerBinding {3, sampler});
+        gpu::ArrayOfImagesBinding {2, scene_textures});
 
       cmd.bind_descriptors_graphics(0, {set}, {blk.offset});
 
       for (const auto &draw_call : draw_calls) {
         const auto &mesh = target.meshes[draw_call.mesh];
         const auto &material = target.materials[mesh.material_index];
-
-        if (material.albedo_tex_index == scene::INVALID_TEXTURE) {
+        
+        if (material.albedo_tex_index >= scene_textures.size() || material.metalic_roughness_index >= scene_textures.size()) {
           continue;
         }
 
@@ -352,10 +254,6 @@ void SceneRenderer::render_shadow(rendergraph::RenderGraph &graph, const glm::ma
       for (const auto &draw_call : draw_calls) {
         const auto &mesh = target.meshes[draw_call.mesh];
         const auto &material = target.materials[mesh.material_index];
-
-        if (material.albedo_tex_index == scene::INVALID_TEXTURE) {
-          continue;
-        }
 
         cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &draw_call.transform);
         cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);

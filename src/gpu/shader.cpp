@@ -52,11 +52,11 @@ namespace gpu {
     VKCHECK(vkResetDescriptorPool(internal::app_vk_device(), pools[index], 0));
   }
   
-  void DescriptorPool::allocate_sets(uint32_t sets_count, const VkDescriptorSetLayout *set_layouts, VkDescriptorSet *sets) {
+  void DescriptorPool::allocate_sets(uint32_t sets_count, const VkDescriptorSetLayout *set_layouts, VkDescriptorSet *sets, void *ext) {
     
     VkDescriptorSetAllocateInfo info {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .pNext = nullptr,
+      .pNext = ext,
       .descriptorPool = pools[index],
       .descriptorSetCount = sets_count,
       .pSetLayouts = set_layouts

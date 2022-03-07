@@ -317,7 +317,7 @@ int main(int argc, char **argv) {
     draw_params.fovy_aspect_znear_zfar = glm::vec4{glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};
     draw_params.jitter = use_jitter? next_taa_offset(gbuffer.w, gbuffer.h) : glm::vec4{0.f, 0.f, 0.f, 0.f};
 
-    scene_renderer.update_scene(camera.get_view_mat(), projection);
+    scene_renderer.update_scene();
     shading_pass.update_params(camera.get_view_mat(), shadow_mvp, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f);
     
     gpu_transfer::process_requests(render_graph);

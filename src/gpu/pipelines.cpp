@@ -59,7 +59,12 @@ namespace gpu {
     }
   }
 
-  using LayoutBuilder = std::unordered_map<uint32_t, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>>;
+  struct ResourceBinding {
+    VkDescriptorSetLayoutBinding binding;
+    bool bindless;
+  };
+
+  using LayoutBuilder = std::unordered_map<uint32_t, std::unordered_map<uint32_t, ResourceBinding>>;
 
   static void validate_bindings(std::vector<ShaderBinding> &bindings) {
     std::sort(bindings.begin(), bindings.end(), [](const auto &left, const auto &right){
@@ -131,6 +136,7 @@ namespace gpu {
       auto resource = res[i];
       auto set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
       auto binding = comp.get_decoration(resource.id, spv::DecorationBinding);  
+      bool bindless = false;
 
       const auto &type = comp.get_type(resource.type_id);
       uint32_t desc_count = 1;
@@ -138,6 +144,12 @@ namespace gpu {
         for (auto elem : type.array) {
           desc_count *= elem;
         }
+      }
+
+      if (desc_count == 0) { //bindless resource
+        const uint32_t max_bindless_resources = 1024;
+        desc_count = max_bindless_resources;
+        bindless = true;
       }
 
       if (!builder[set].count(binding)) { //first creation
@@ -148,19 +160,23 @@ namespace gpu {
           .stageFlags = stage,
           .pImmutableSamplers = nullptr
         };
-        builder[set][binding] = api_binding;
+        builder[set][binding] = ResourceBinding{api_binding, bindless};
       }
 
       auto &desc = builder[set][binding];
-      if (desc.descriptorType != desc_type) {
+      if (desc.binding.descriptorType != desc_type) {
         throw std::runtime_error {"Incompatible type for descriptors"};
       }
 
-      if (desc.descriptorCount != desc_count) {
+      if (desc.binding.descriptorCount != desc_count) {
         throw std::runtime_error {"Incompatible array declaration"};
       }
 
-      desc.stageFlags |= stage;
+      if (desc.bindless != bindless) {
+        throw std::runtime_error {"Incorrect bindless resource redeclaration"};
+      }
+      
+      desc.binding.stageFlags |= stage;
     }
   }
 
@@ -237,14 +253,23 @@ namespace gpu {
     std::vector<VkDescriptorSetLayout> vec_layouts;
     for (const auto &[set_id, bindings] : layout_builder) {
       std::vector<VkDescriptorSetLayoutBinding> api_bindings;
+      std::vector<VkDescriptorBindingFlags> binding_flags;
 
       for (const auto &[id, binding] : bindings) {
-        api_bindings.push_back(binding);
+        api_bindings.push_back(binding.binding);
+        binding_flags.push_back(binding.bindless? VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT|VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT : 0);
       }
+      
+      VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+        .pNext = nullptr,
+        .bindingCount = (uint32_t)binding_flags.size(),
+        .pBindingFlags = binding_flags.data()
+      };
 
       VkDescriptorSetLayoutCreateInfo info {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
+        .pNext = &flags_info,
         .flags = 0,
         .bindingCount = (uint32_t)api_bindings.size(),
         .pBindings = api_bindings.data()

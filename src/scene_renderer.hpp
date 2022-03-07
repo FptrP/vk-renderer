@@ -36,9 +36,8 @@ struct SceneRenderer {
   SceneRenderer(scene::CompiledScene &s) : target {s} {}
 
   void init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer &buffer);
-  void update_scene(const glm::mat4 &camera, const glm::mat4 &projection);
+  void update_scene();
   
-  void draw(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer);
   void draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, const DrawTAAParams &params);
   void render_shadow(rendergraph::RenderGraph &graph, const glm::mat4 &shadow_mvp, rendergraph::ImageResourceId out_tex, uint32_t layer);
 
@@ -55,16 +54,15 @@ struct SceneRenderer {
 
 private:
   scene::CompiledScene &target;
-  gpu::GraphicsPipeline opaque_pipeline;
   gpu::GraphicsPipeline opaque_taa_pipeline;
   gpu::GraphicsPipeline shadow_pipeline;
 
   std::vector<VkImageView> scene_image_views;
+  std::vector<std::pair<VkImageView, VkSampler>> scene_textures;
   std::vector<DrawCall> draw_calls;
   VkSampler sampler;
   
   rendergraph::BufferResourceId transform_buffer;
-  rendergraph::BufferResourceId view_proj_buffer;
 };
 
 
