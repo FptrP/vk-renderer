@@ -55,6 +55,7 @@ private:
   scene::CompiledScene &target;
   gpu::GraphicsPipeline opaque_taa_pipeline;
   gpu::GraphicsPipeline shadow_pipeline;
+  gpu::ManagedDescriptorSet bindless_textures {}; 
 
   std::vector<std::pair<VkImageView, VkSampler>> scene_textures;
   std::vector<DrawCall> draw_calls;

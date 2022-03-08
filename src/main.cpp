@@ -237,8 +237,8 @@ int main(int argc, char **argv) {
   ReadBackSystem readback_system;
 
   gpu::TransferCmdPool transfer_pool {};
-  //auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
   auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/Sponza/glTF/Sponza.gltf", USE_RAY_QUERY);
+  //auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/suzanne/Suzanne.gltf", USE_RAY_QUERY);
 #if USE_RAY_QUERY
   scene::SceneAccelerationStructure acceleration_struct;
   acceleration_struct.build(transfer_pool, scene);
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
 
   SceneRenderer scene_renderer {scene};
   scene_renderer.init_pipeline(render_graph, gbuffer);
-  DeferedShadingPass shading_pass {render_graph, app_init.window};
+  DeferedShadingPass shading_pass {render_graph, app_init.window};  
 
   imgui_create_fonts(transfer_pool);
 

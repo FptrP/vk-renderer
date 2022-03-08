@@ -11,6 +11,7 @@
 
 #include <sstream>
 #include <initializer_list>
+#include <map>
 
 namespace gpu {
 
@@ -64,7 +65,7 @@ namespace gpu {
     bool bindless;
   };
 
-  using LayoutBuilder = std::unordered_map<uint32_t, std::unordered_map<uint32_t, ResourceBinding>>;
+  using LayoutBuilder = std::map<uint32_t, std::unordered_map<uint32_t, ResourceBinding>>;
 
   static void validate_bindings(std::vector<ShaderBinding> &bindings) {
     std::sort(bindings.begin(), bindings.end(), [](const auto &left, const auto &right){

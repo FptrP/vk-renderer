@@ -45,6 +45,9 @@ namespace gpu {
   
   std::vector<Image> get_swapchain_images();
   uint32_t get_swapchain_image_count();
+
+  ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout);
+  ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout, const std::initializer_list<uint32_t> &variable_sizes);
 }
 
 #endif

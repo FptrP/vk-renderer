@@ -12,7 +12,7 @@ layout (location = 1) out vec4 out_normal;
 layout (location = 2) out vec4 out_material;
 layout (location = 3) out vec2 velocity_vector;
 
-layout (set = 0, binding = 2) uniform sampler2D material_textures[];
+layout (set = 1, binding = 0) uniform sampler2D material_textures[];
 
 layout (push_constant) uniform push_data {
   uint transform_index;

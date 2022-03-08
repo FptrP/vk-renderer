@@ -8,7 +8,8 @@ namespace gpu {
   static std::optional<Swapchain> g_swapchain;
   static std::unique_ptr<PipelinePool> g_pipeline_pool;
   static std::optional<SamplerPool> g_sampler_pool;
-  
+  static std::optional<StaticDescriptorPool> g_static_descriptors;
+
   void init_all(const InstanceConfig &icfg, PFN_vkDebugUtilsMessengerCallbackEXT callback, DeviceConfig dcfg, VkExtent2D window_size, SurfaceCreateCB &&surface_cb) {
     create_context(icfg, callback, dcfg, std::move(surface_cb));
     
@@ -18,6 +19,7 @@ namespace gpu {
 
     g_pipeline_pool.reset(new PipelinePool {});
     g_sampler_pool.emplace(SamplerPool {});
+    g_static_descriptors.emplace(StaticDescriptorPool {});
   }
 
   void close() {
@@ -26,6 +28,7 @@ namespace gpu {
     auto ptr = g_pipeline_pool.get();
     delete ptr;
 
+    g_static_descriptors.reset();
     g_pipeline_pool.release();
     g_sampler_pool.reset();
     g_swapchain.reset();
@@ -114,6 +117,14 @@ namespace gpu {
   uint32_t get_swapchain_image_count() {
     auto &swapchain = app_swapchain();
     return swapchain.get_images_count();
+  }
+
+  ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout) {
+    return allocate_descriptor_set(layout, {});
+  }
+  
+  ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout, const std::initializer_list<uint32_t> &variable_sizes) {
+    return ManagedDescriptorSet {*g_static_descriptors, layout, variable_sizes.size(), variable_sizes.begin()};
   }
 
 }

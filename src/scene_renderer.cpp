@@ -89,6 +89,11 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
 
     scene_textures.push_back({img.get_view(range), target.samplers[tex_desc.sampler_index]});
   }
+
+  bindless_textures = gpu::allocate_descriptor_set(opaque_taa_pipeline.get_layout(1), {(uint32_t)scene_textures.size()});
+  gpu::write_set(bindless_textures, 
+    gpu::ArrayOfImagesBinding {0, scene_textures});
+  
 }
 
 static void node_process(const scene::BaseNode &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
@@ -176,14 +181,14 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
       auto blk = cmd.allocate_ubo<GbufConst>();
       *blk.ptr = consts;
 
-      auto set = resources.allocate_set(opaque_taa_pipeline, 0, {(uint32_t)scene_textures.size()});
+      auto set = resources.allocate_set(opaque_taa_pipeline, 0);
 
       gpu::write_set(set, 
         gpu::UBOBinding {0, cmd.get_ubo_pool(), blk},
-        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)},
-        gpu::ArrayOfImagesBinding {2, scene_textures});
+        gpu::SSBOBinding {1, resources.get_buffer(transform_buffer)});
 
       cmd.bind_descriptors_graphics(0, {set}, {blk.offset});
+      cmd.bind_descriptors_graphics(1, {bindless_textures}, {});
 
       for (const auto &draw_call : draw_calls) {
         const auto &mesh = target.root_meshes[draw_call.mesh];
