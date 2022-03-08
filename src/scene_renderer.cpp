@@ -81,30 +81,28 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   sampler = gpu::create_sampler(sampler_info);
   transform_buffer = graph.create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(glm::mat4) * 1000, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
-  scene_textures.reserve(target.images.size());
-  for (auto &elem : target.images) {
+  scene_textures.reserve(target.textures.size());
+  for (auto tex_desc : target.textures) {
     gpu::ImageViewRange range {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
-    range.mips_count = elem.get_mip_levels();
-    auto view = elem.get_view(range);
-    scene_textures.push_back({view, sampler});
+    auto &img = target.images[tex_desc.image_index];
+    range.mips_count = img.get_mip_levels();
+
+    scene_textures.push_back({img.get_view(range), target.samplers[tex_desc.sampler_index]});
   }
 }
 
-static void node_process(const scene::Node &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
+static void node_process(const scene::BaseNode &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
   auto transform = acc * node.transform;
   uint32_t transform_id = transforms.size()/2;
   
-  if (node.meshes.size()) {
+  if (node.mesh_index >= 0) {
     transforms.push_back(transform);
     transforms.push_back(glm::transpose(glm::inverse(transform)));
-  }
-
-  for (auto mesh_index : node.meshes) {
-    draw_calls.push_back(SceneRenderer::DrawCall {transform_id, mesh_index});
+    draw_calls.push_back(SceneRenderer::DrawCall {transform_id, (uint32_t)node.mesh_index});
   }
 
   for (auto &child : node.children) {
-    node_process(*child, draw_calls, transforms, transform);
+    node_process(child, draw_calls, transforms, transform);
   }
 }
 
@@ -114,7 +112,9 @@ void SceneRenderer::update_scene() {
 
   draw_calls.clear();
   
-  node_process(*target.root, draw_calls, transforms, identity);
+  for (auto &node : target.base_nodes) {
+    node_process(node, draw_calls, transforms, identity);
+  }
   gpu_transfer::write_buffer(transform_buffer, 0, sizeof(glm::mat4) * transforms.size(), transforms.data());
 }
 
@@ -186,23 +186,24 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
       cmd.bind_descriptors_graphics(0, {set}, {blk.offset});
 
       for (const auto &draw_call : draw_calls) {
-        const auto &mesh = target.meshes[draw_call.mesh];
-        const auto &material = target.materials[mesh.material_index];
+        const auto &mesh = target.root_meshes[draw_call.mesh];
         
-        if (material.albedo_tex_index >= scene_textures.size() || material.metalic_roughness_index >= scene_textures.size()) {
-          continue;
+        for (auto &prim : mesh.primitives) {
+          const auto &material = target.materials[prim.material_index];
+          if (material.albedo_tex_index >= scene_textures.size() || material.metalic_roughness_index >= scene_textures.size()) {
+            continue;
+          }
+
+          PushData pc {};
+          pc.transform_index = draw_call.transform;
+          pc.albedo_index = material.albedo_tex_index;
+          pc.mr_index = material.metalic_roughness_index;
+          pc.flags = material.clip_alpha? 0xff : 0;
+        
+          cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
+          cmd.draw_indexed(prim.index_count, 1, prim.index_offset, prim.vertex_offset, 0);
         }
-
-        PushData pc {};
-        pc.transform_index = draw_call.transform;
-        pc.albedo_index = material.albedo_tex_index;
-        pc.mr_index = material.metalic_roughness_index;
-        pc.flags = material.clip_alpha? 0xff : 0;
-        
-        cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);
-        cmd.draw_indexed(mesh.index_count, 1, mesh.index_offset, mesh.vertex_offset, 0);
       }
-
 
       cmd.end_renderpass();
       
@@ -213,8 +214,8 @@ void SceneRenderer::render_shadow(rendergraph::RenderGraph &graph, const glm::ma
   struct Data {
     rendergraph::ImageViewId depth;
   };
-  
-  graph.add_task<Data>("ShadowPass",
+  //TODO: new scene traverse
+  /*graph.add_task<Data>("ShadowPass",
     [&](Data &input, rendergraph::RenderGraphBuilder &builder){
       input.depth = builder.use_depth_attachment(out_tex, 0, layer);
       builder.use_storage_buffer(transform_buffer, VK_SHADER_STAGE_VERTEX_BIT);
@@ -260,5 +261,5 @@ void SceneRenderer::render_shadow(rendergraph::RenderGraph &graph, const glm::ma
 
       cmd.end_renderpass();
       
-    });
+    });*/
 }

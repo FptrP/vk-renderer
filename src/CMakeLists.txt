@@ -4,7 +4,6 @@ project(cgtask3)
 
 find_package(SDL2 REQUIRED)
 find_package(Vulkan REQUIRED)
-find_package(assimp REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -g -pthread")
@@ -44,4 +43,4 @@ add_executable(main
   scene/scene_as.cpp
   scene/images.cpp)
 
-target_link_libraries(main vk-gpu ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES} assimp)
+target_link_libraries(main vk-gpu ${SDL2_LIBRARIES} ${Vulkan_LIBRARIES})

@@ -1,6 +1,8 @@
 #include "advanced_ssr.hpp"
 #include "imgui_pass.hpp"
 
+#include <cstring>
+
 #define HALTON_SEQ_SIZE 128
 
 static float halton_elem(uint32_t index, uint32_t base) {

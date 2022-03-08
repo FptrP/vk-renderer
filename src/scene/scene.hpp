@@ -7,12 +7,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <lib/volk.h>
-
-#include <assimp/Importer.hpp>      
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-#include <assimp/pbrmaterial.h>
-
 #include "gpu/gpu.hpp"
 
 namespace scene {
@@ -75,12 +69,10 @@ namespace scene {
     CompiledScene(CompiledScene &) = delete;
     CompiledScene &operator=(CompiledScene &) = delete;
 
-    std::vector<Mesh> meshes;
     std::vector<Material> materials;
     gpu::Buffer vertex_buffer;
     gpu::Buffer index_buffer;
     std::vector<gpu::Image> images;
-    std::unique_ptr<Node> root;
     
     std::vector<VkSampler> samplers;
     std::vector<Texture> textures;
@@ -91,7 +83,6 @@ namespace scene {
   gpu::VertexInput get_vertex_input();
   gpu::VertexInput get_vertex_input_shadow();
 
-  CompiledScene load_gltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, const std::string &folder, bool for_ray_traing = true);
   CompiledScene load_tinygltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, bool for_ray_traing = true);
   gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path);
 }

@@ -237,8 +237,8 @@ int main(int argc, char **argv) {
   ReadBackSystem readback_system;
 
   gpu::TransferCmdPool transfer_pool {};
-  auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
-  scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/Sponza/glTF/Sponza.gltf", USE_RAY_QUERY);
+  //auto scene = scene::load_gltf_scene(transfer_pool, "assets/gltf/Sponza/glTF/Sponza.gltf", "assets/gltf/Sponza/glTF/", USE_RAY_QUERY);
+  auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/Sponza/glTF/Sponza.gltf", USE_RAY_QUERY);
 #if USE_RAY_QUERY
   scene::SceneAccelerationStructure acceleration_struct;
   acceleration_struct.build(transfer_pool, scene);
@@ -324,9 +324,8 @@ int main(int argc, char **argv) {
 
     SamplesMarker::clear(render_graph);
 
-    //scene_renderer.draw(render_graph, gbuffer);
     scene_renderer.draw_taa(render_graph, gbuffer, draw_params);
-    scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);    
+    //scene_renderer.render_shadow(render_graph, shadow_mvp, shadows_tex, 0);    
     downsample_pass.run(render_graph, gbuffer.normal, gbuffer.velocity_vectors, gbuffer.depth, gbuffer.downsampled_normals, gbuffer.downsampled_velocity_vectors);
 
     ImGui::Begin("Read texture");

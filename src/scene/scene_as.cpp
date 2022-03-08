@@ -17,10 +17,10 @@ namespace scene {
   }
 
   void SceneAccelerationStructure::build(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source) {
-    for (const auto &mesh : source.meshes) {
+    /*for (const auto &mesh : source.meshes) { TODO: rework
       build_blas(transfer_pool, mesh, source);
     }
-    build_tlas(transfer_pool, source);
+    build_tlas(transfer_pool, source);*/
   }
 
   void SceneAccelerationStructure::build_blas(gpu::TransferCmdPool &transfer_pool, const Mesh &mesh, const CompiledScene &source) {
@@ -144,7 +144,7 @@ namespace scene {
 
   void SceneAccelerationStructure::build_tlas(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source) {
     //todo : normal alghorithm
-    VkTransformMatrixKHR transform {
+    /*VkTransformMatrixKHR transform {
 			1.0f, 0.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f
@@ -251,7 +251,7 @@ namespace scene {
     vkBeginCommandBuffer(cmd, &begin_info);
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &build_geometry, &range_ptr);
     vkEndCommandBuffer(cmd);
-    transfer_pool.submit_and_wait();
+    transfer_pool.submit_and_wait();*/
   }
 
 }
