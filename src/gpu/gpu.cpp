@@ -127,4 +127,8 @@ namespace gpu {
     return ManagedDescriptorSet {*g_static_descriptors, layout, variable_sizes.size(), variable_sizes.begin()};
   }
 
+  void reload_shaders() {
+    VKCHECK(vkDeviceWaitIdle(internal::app_vk_device()));
+    g_pipeline_pool->reload_programs();
+  }
 }

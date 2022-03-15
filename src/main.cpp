@@ -160,6 +160,12 @@ void get_depth_png_cb(ReadBackData &&image) {
 }
 
 void get_rgba_cb(ReadBackData &&image) {
+  for (uint32_t y = 0; y < image.height; y++) {
+    for (uint32_t x = 0; x < image.width; x++) {
+      uint32_t offset = y * image.width + x;
+      image.bytes[4 * offset + 3] = 255;
+    }
+  }
   int res = stbi_write_png("captures/gbuffer_color.png", int(image.width), int(image.height), 4, image.bytes.get(), 0);
   std::cout << "STBI: " << res << "\n";
 }
@@ -201,7 +207,6 @@ static void load_shaders(const fs::path &config_path) {
       }
 
       binding.path = file_path.string();
-      //std::cout << "Loading " << binding.path << "\n";
       bindings.push_back(std::move(binding));
     }
     std::cout << "Loading " << prog_name << " program\n";
@@ -211,6 +216,11 @@ static void load_shaders(const fs::path &config_path) {
 
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
+
+rendergraph::ImageResourceId create_readbackimage(rendergraph::RenderGraph &graph) {
+  gpu::ImageInfo image_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, WIDTH, HEIGHT};
+  return graph.create_image(VK_IMAGE_TYPE_2D, image_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+}
 
 int main(int argc, char **argv) {
   bool enable_validation = true;
@@ -261,6 +271,7 @@ int main(int argc, char **argv) {
 
   imgui_create_fonts(transfer_pool);
 
+  auto readback_image = create_readbackimage(render_graph);
   auto shadows_tex = render_graph.create_image(
     VK_IMAGE_TYPE_2D, 
     gpu::ImageInfo{
@@ -292,15 +303,18 @@ int main(int argc, char **argv) {
 
   glm::mat4 prev_mvp = projection * camera.get_view_mat();
   ReadBackID image_read_back = INVALID_READBACK;
-
+  bool reload_request = false;
   while (!quit) {
     imgui_new_frame();
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       imgui_handle_event(event);
+      
       if (event.type == SDL_QUIT) {
         quit = true;
-      }
+      } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_r) {
+        reload_request = true;
+      } 
 
       camera.process_event(event);
     }
@@ -331,6 +345,7 @@ int main(int argc, char **argv) {
     ImGui::Begin("Read texture");
     bool depth = ImGui::Button("Depth") && (image_read_back == INVALID_READBACK);
     bool color = ImGui::Button("Color") && (image_read_back == INVALID_READBACK);
+    bool output_readback = ImGui::Button("Final frame") && (image_read_back == INVALID_READBACK);
     if (depth) {
       image_read_back = readback_system.read_image(render_graph, gbuffer.depth, VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0);
     } else if (color) {
@@ -357,6 +372,12 @@ int main(int argc, char **argv) {
 
     shading_pass.draw(render_graph, gbuffer, shadows_tex, gtao.accumulated_ao, ssr.get_preintegrated_brdf(), ssr.get_blurred(), color_out_tex);
     taa_pass.run(render_graph, gbuffer, color_out_tex, draw_params);
+    
+    if (output_readback && image_read_back == INVALID_READBACK) {
+      blit_image(render_graph, taa_pass.get_output(), readback_image);
+      image_read_back = readback_system.read_image(render_graph, readback_image);
+    }
+    
     add_backbuffer_subpass(render_graph, taa_pass.get_output(), sampler, DrawTex::ShowAll);
     //add_backbuffer_subpass(render_graph, gtao.accumulated_ao, sampler, DrawTex::ShowR);
     //add_backbuffer_subpass(render_graph, ssr.get_blurred(), sampler, DrawTex::ShowAll);
@@ -380,6 +401,11 @@ int main(int argc, char **argv) {
     taa_pass.remap_targets(render_graph);
     ssr.remap_images(render_graph);
     prev_mvp = projection * camera.get_view_mat();
+
+    if (reload_request) {
+      gpu::reload_shaders();
+      reload_request = false;
+    }
   }
   
   vkDeviceWaitIdle(gpu::app_device().api_device());

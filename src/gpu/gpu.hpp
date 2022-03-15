@@ -27,6 +27,8 @@ namespace gpu {
 
   VkSampler create_sampler(const VkSamplerCreateInfo &info);
 
+  void reload_shaders();
+
   template<typename T>
   DynBuffer<T> create_dynbuffer(uint32_t elems_count) {
     auto &dev = app_device();

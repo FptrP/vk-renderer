@@ -233,12 +233,40 @@ namespace gpu {
     }
     
     validate_bindings(bindings);
+    auto index = allocated_programs.size();
+
+    programs[name] = index;
+    allocated_programs.push_back(ShaderProgram {
+      std::move(bindings),
+      {},
+      {},
+      nullptr
+    });
+    create_program(allocated_programs[index]);
+  }
+
+  void PipelinePool::create_program(ShaderProgram &prog) {
+    if (prog.pipeline_layout) {
+      vkDestroyPipelineLayout(internal::app_vk_device(), prog.pipeline_layout, nullptr);
+      prog.pipeline_layout = nullptr;
+    }
+
+    for (auto &desc : prog.dsl) {
+      vkDestroyDescriptorSetLayout(internal::app_vk_device(), desc.second, nullptr);
+    }
+
+    for (auto &shader : prog.modules) {
+      vkDestroyShaderModule(internal::app_vk_device(), shader, nullptr);
+    }
+
+    prog.modules.clear();
+    prog.dsl.clear();
 
     LayoutBuilder layout_builder;
     VkPushConstantRange push_const {0, 0, 0};
     std::vector<VkShaderModule> modules;
     
-    for (const auto &binding : bindings) {
+    for (const auto &binding : prog.shader_info) {
       try {
         modules.push_back(load_module(internal::app_vk_device(), binding, layout_builder, push_const));
       }
@@ -297,16 +325,26 @@ namespace gpu {
 
     VkPipelineLayout pipeline_layout;
     VKCHECK(vkCreatePipelineLayout(internal::app_vk_device(), &info, nullptr, &pipeline_layout));
-    
-    auto index = allocated_programs.size();
 
-    programs[name] = index;
-    allocated_programs.push_back(ShaderProgram {
-      std::move(bindings),
-      std::move(modules),
-      std::move(api_layouts),
-      pipeline_layout
-    });
+    prog.pipeline_layout = pipeline_layout;
+    prog.modules = std::move(modules);
+    prog.dsl = std::move(api_layouts);
+  }
+
+  void PipelinePool::reload_programs() {
+    for (auto &desc : compute_pipelines) {
+      vkDestroyPipeline(internal::app_vk_device(), desc.second.handle, nullptr);
+      desc.second.handle = nullptr;
+    }
+
+    for (auto &desc : graphics_pipelines) {
+      vkDestroyPipeline(internal::app_vk_device(), desc.second.handle, nullptr);
+      desc.second.handle = nullptr;
+    }
+  
+    for (auto &shader : allocated_programs) {
+      create_program(shader);
+    }
   }
 
   uint32_t PipelinePool::get_subpass_index(const RenderSubpassDesc &desc) {

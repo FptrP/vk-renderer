@@ -187,7 +187,7 @@ namespace gpu {
     VkPipelineLayout get_pipeline_layout() const;
     
     bool is_attached() const { return pool != nullptr; }
-    bool has_program() const { return program_id.has_value(); };
+    bool has_program() const { return program_id.has_value(); }
   protected:
     PipelinePool *pool {nullptr};
     std::optional<uint32_t> program_id {};
@@ -269,7 +269,8 @@ namespace gpu {
     }
     
     void create_program(const std::string &name, std::vector<ShaderBinding> &&bindings);
-
+    void reload_programs();
+    
     PipelinePool(const PipelinePool &) = delete;
     const PipelinePool &operator=(const PipelinePool &) = delete;
   private:
@@ -308,6 +309,8 @@ namespace gpu {
 
     std::unordered_map<ComputePipeline, Pipeline, HashFunc<ComputePipeline>> compute_pipelines;
     std::unordered_map<GraphicsPipeline, Pipeline, HashFunc<GraphicsPipeline>> graphics_pipelines;
+
+    void create_program(ShaderProgram &prog);
 
     uint32_t get_subpass_index(const RenderSubpassDesc &desc);
     VkRenderPass get_subpass(uint32_t subpass_index);

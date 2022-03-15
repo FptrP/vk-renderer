@@ -147,3 +147,33 @@ void clear_color(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
         &range);
     });  
 }
+
+void blit_image(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId src, rendergraph::ImageResourceId dst) {
+  struct Input {};
+  graph.add_task<Input>("CopyImage",
+    [&](Input &, rendergraph::RenderGraphBuilder &builder){
+      builder.transfer_read(src, 0, 1, 0, 1);
+      builder.transfer_write(dst, 0, 1, 0, 1);
+    },
+    [=](Input &, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
+      auto &src_info = resources.get_image(src).get_info();
+      auto &dst_info = resources.get_image(dst).get_info();
+      VkImageBlit region {
+        .srcSubresource {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .srcOffsets {{0, 0, 0}, {(int32_t)src_info.extent2D().width, (int32_t)src_info.extent2D().height, 1}},
+        .dstSubresource {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .dstOffsets {{0, 0, 0}, {(int32_t)dst_info.extent2D().width, (int32_t)dst_info.extent2D().height, 1}}
+      };
+
+      vkCmdBlitImage(
+        cmd.get_command_buffer(),
+        resources.get_image(src).get_image(),
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        resources.get_image(dst).get_image(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, 
+        &region,
+        VK_FILTER_LINEAR);
+    
+    });
+}
