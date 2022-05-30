@@ -28,6 +28,7 @@ private:
   rendergraph::BufferResourceId ubo_consts;
 
   glm::vec2 min_max_roughness {0.f, 1.f};
+  bool only_ao = false;
 };
 
 

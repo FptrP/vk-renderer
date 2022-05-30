@@ -29,6 +29,7 @@ layout (set = 0, binding = 8) uniform sampler2D reflections_tex;
 
 layout (push_constant) uniform PushConsts {
   vec2 min_max_rougness;
+  uint show_ao;
 };
 
 vec4 sample_ocllusion_ssr(float depth, vec2 screen_uv);
@@ -91,8 +92,12 @@ void main() {
   Lo += reflection * (F0 * ssr_brdf.x + vec3(ssr_brdf.y));
   vec3 color = occlusion * (vec3(0.6) * albedo + Lo);
   
-  out_color = vec4(color, 0);
-  //out_color = vec4(occlusion, occlusion, occlusion, 0);
+
+  if (show_ao != 0) {
+    out_color = vec4(occlusion, occlusion, occlusion, 0);
+  } else {
+    out_color = vec4(color, 0);
+  }
 }
 
 vec4 sample_ocllusion_ssr(float depth, vec2 screen_uv) {

@@ -237,8 +237,43 @@ namespace rendergraph {
     return false;
   }
 
+  static void dump_stages(VkPipelineStageFlags flags);
+
+  static bool validate_stage(VkPipelineStageFlags flags) {
+    constexpr auto valid = 
+      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT|
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT|
+      VK_PIPELINE_STAGE_ALL_COMMANDS_BIT|
+      VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|
+      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT|
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT|
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|
+      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|
+      VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT|
+      VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT|
+      VK_PIPELINE_STAGE_TRANSFER_BIT|
+      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+    
+    return (flags & ~valid) == 0;
+  }
+  template <typename T>
+  struct StateValidator {
+    StateValidator(const T &t) : ref {t} {}
+    ~StateValidator() {
+      /*if (!validate_stage(ref.src.stages) || !validate_stage(ref.dst.stages)) {
+        dump_stages(ref.src.stages);
+        dump_stages(ref.dst.stages);
+        std::cout << "Tracking error\n";
+      }*/
+    }
+
+  private:
+    const T &ref;
+  };
+
   void TrackingState::add_input(GraphResources &resources, const BufferResourceId &id, const BufferState &state) {
     auto &track = resources.get_resource_state(id);
+    StateValidator<decltype(track)> validator {track};
 
     if (is_empty_state(track)) { //acquire resource
       track.barrier_id = 0;
@@ -275,6 +310,7 @@ namespace rendergraph {
   
   void TrackingState::add_input(GraphResources &resources, const ImageSubresourceId &id, const ImageSubresourceState &state) {
     auto &track = resources.get_resource_state(id);
+    StateValidator<decltype(track)> validator {track};
 
     if (is_empty_state(track)) { //acquire resource
       track.barrier_id = 0;
@@ -311,6 +347,7 @@ namespace rendergraph {
   void TrackingState::flush(GraphResources &resources) {
     for (auto id : dirty_images) {
       auto &track = resources.get_resource_state(id);
+      StateValidator<decltype(track)> validator {track};
 
       if (track.wait_for != INVALID_BARRIER_INDEX) {
         flush_resource(task_resources, id, track);
@@ -326,6 +363,7 @@ namespace rendergraph {
 
     for (auto id : dirty_buffers) {
       auto &track = resources.get_resource_state(id);
+      StateValidator<decltype(track)> validator {track};
 
       if (track.wait_for != INVALID_BARRIER_INDEX) {
         flush_resource(task_resources, id, track);

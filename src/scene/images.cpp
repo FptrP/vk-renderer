@@ -138,9 +138,9 @@ namespace scene {
       
       VkImageBlit blit_region {
         .srcSubresource {VK_IMAGE_ASPECT_COLOR_BIT, src_mip, 0, 1},
-        .srcOffsets {{0, 0, 0}, {src_width, src_height, 1}},
+        .srcOffsets {{0, 0, 0}, {std::max((int)src_width, 1), std::max((int)src_height, 1), 1}},
         .dstSubresource {VK_IMAGE_ASPECT_COLOR_BIT, dst_mip, 0, 1},
-        .dstOffsets {{0, 0, 0}, {src_width/2, src_height/2, 1}}
+        .dstOffsets {{0, 0, 0}, {std::max(src_width/2, 1), std::max(src_height/2, 1), 1}}
       };
 
       auto barriers = {src_barrier, dst_barrier};

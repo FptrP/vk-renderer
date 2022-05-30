@@ -21,13 +21,26 @@ layout (push_constant) uniform push_data {
   uint flags;
 };
 
+#define INVALID_INDEX (~0u)
+
 void main() {
-  out_albedo = texture(material_textures[albedo_index], in_uv);
+  if (albedo_index != INVALID_INDEX) {
+    out_albedo = texture(material_textures[albedo_index], in_uv);
+  } else {
+    out_albedo = vec4(0.5, 0.5, 0.5, 1.0);
+  }
+  
   if (out_albedo.a == 0) {
     discard;
   }
 
   out_normal = vec4(encode_normal(in_normal), 0, 0);
-  out_material = texture(material_textures[mr_index], in_uv);
+
+  if (mr_index != INVALID_INDEX) {
+    out_material = texture(material_textures[mr_index], in_uv);
+  } else {
+    out_material = vec4(0.5, 0.9, 0.5, 0.5);
+  }
+  
   velocity_vector = 0.5 * (pos_before.xy/pos_before.w - pos_after.xy/pos_after.w);
 }

@@ -81,11 +81,16 @@ struct GTAO {
 
   void draw_ui();
 
+  void remap(rendergraph::RenderGraph &graph) {
+    graph.remap(accumulated_history, accumulated_ao);
+  }
+
   rendergraph::ImageResourceId raw; //output of main pass
   rendergraph::ImageResourceId filtered; //output of filter pass
   rendergraph::ImageResourceId prev_frame; //previous frame
   rendergraph::ImageResourceId output; //final
   rendergraph::ImageResourceId accumulated_ao;
+  rendergraph::ImageResourceId accumulated_history;
   rendergraph::ImageResourceId deinterleaved_depth;
 
 private:
@@ -105,6 +110,11 @@ private:
 
   gpu::Buffer random_vectors;
   bool mis_gtao = true;
+  bool two_directions = false;
+  bool only_reflections = false;
+  bool clear_history = false;
+  float weight_ratio = 1.0;
+
   uint32_t frame_count = 0;
 
   VkSampler sampler;

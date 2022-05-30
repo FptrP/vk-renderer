@@ -7,7 +7,7 @@
 #define PI 3.1415926535897932384626433832795
 
 layout (location = 0) in vec2 screen_uv;
-layout (location = 0) out float occlusion;
+layout (location = 0) out vec4 occlusion;
 
 layout (set = 0, binding = 0) uniform GTAORTParams {
   mat4 camera_to_world;
@@ -66,7 +66,7 @@ void main() {
 
   float frag_depth = texture(depth, screen_uv).r;
   if (frag_depth >= 1.f) {
-    occlusion = 1.f;
+    occlusion = vec4(0.f, 1.f, 0.f, 0.f);
     return;
   }
   
@@ -74,7 +74,7 @@ void main() {
   vec3 world_pos = (camera_to_world * vec4(view_vec, 1)).xyz;
   
   vec3 normal = decode_normal(texture(gbuffer_normal, screen_uv).xy);
-  world_pos += 1e-4 * normal;
+  world_pos += 1e-6 * normal;
 
   vec3 tangent = get_tangent(normal);
   vec3 bitangent = normalize(cross(normal, tangent));
@@ -90,11 +90,11 @@ void main() {
   for (int i = 0; i < SAMPLES_COUNT; i++) {
     vec3 dir = normalize(ao_directions[i].xyz);
     dir = normalize(dir.z * normal + dir.x * tangent + dir.y * bitangent);
-    vec3 scaled_dir = 0.5 * dir; 
+    vec3 scaled_dir = 0.2 * dir; 
 
     sum += get_visibility(world_pos, scaled_dir) * max(dot(dir, normal), 0.f);
   }
 
   sum /= SAMPLES_COUNT;
-  occlusion = 2 * sum; //1/PI * 2 * PI * R^2
+  occlusion = vec4(2 * sum, 1.0, 0.0, 0.0); //1/PI * 2 * PI * R^2
 }

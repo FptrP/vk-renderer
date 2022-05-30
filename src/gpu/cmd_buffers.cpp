@@ -90,6 +90,10 @@ namespace gpu {
   }
 
   void CmdContext::set_framebuffer(uint32_t width, uint32_t height, const std::initializer_list<VkImageView> &views) {
+    if (width == 0 || height == 0) {
+      throw std::runtime_error {"Zero-sized framebuffer!"};
+    }
+    
     if (fb_state.dirty || fb_state.attachments.size() == 0) {
       fb_state.dirty = true;
       fb_state.width = width;

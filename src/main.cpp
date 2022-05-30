@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <lib/json.hpp>
+#include <ctime>
 
 using json = nlohmann::json; 
 namespace fs = std::filesystem;
@@ -166,7 +167,11 @@ void get_rgba_cb(ReadBackData &&image) {
       image.bytes[4 * offset + 3] = 255;
     }
   }
-  int res = stbi_write_png("captures/gbuffer_color.png", int(image.width), int(image.height), 4, image.bytes.get(), 0);
+
+  int t = clock();
+  std::string name = std::string{"captures/gbuffer_color_"} + std::to_string(t) + ".png";
+  //int res = stbi_write_png("captures/gbuffer_color.png", int(image.width), int(image.height), 4, image.bytes.get(), 0);
+  int res = stbi_write_png(name.c_str(), int(image.width), int(image.height), 4, image.bytes.get(), 0);
   std::cout << "STBI: " << res << "\n";
 }
 
@@ -214,8 +219,8 @@ static void load_shaders(const fs::path &config_path) {
   }
 }
 
-const uint32_t WIDTH = 1920;
-const uint32_t HEIGHT = 1080;
+const uint32_t WIDTH = 2560;
+const uint32_t HEIGHT = 1440;
 
 rendergraph::ImageResourceId create_readbackimage(rendergraph::RenderGraph &graph) {
   gpu::ImageInfo image_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, WIDTH, HEIGHT};
@@ -241,15 +246,19 @@ int main(int argc, char **argv) {
 
   auto sampler = gpu::create_sampler(gpu::DEFAULT_SAMPLER);
   bool use_jitter = true;
-
+  
   rendergraph::RenderGraph render_graph {gpu::app_device(), gpu::app_swapchain()};
   gpu_transfer::init(render_graph);
   ReadBackSystem readback_system;
 
   gpu::TransferCmdPool transfer_pool {};
   auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/Sponza/glTF/Sponza.gltf", USE_RAY_QUERY);
-  //auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/suzanne/Suzanne.gltf", USE_RAY_QUERY);
+  //auto scene = scene::load_tinygltf_scene(transfer_pool,  "/home/void/workspace/tools/glTF-Sample-Models/room/room_gltf/roomgltf.gltf", USE_RAY_QUERY);
+  //auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/st_dragon/stanford-dragon.gltf", USE_RAY_QUERY);
+  //auto scene = scene::load_tinygltf_scene(transfer_pool,  "assets/gltf/sibernik_gltf/untitled.gltf", USE_RAY_QUERY);
+
 #if USE_RAY_QUERY
+  bool use_rt_ao = false;
   scene::SceneAccelerationStructure acceleration_struct;
   acceleration_struct.build(transfer_pool, scene);
 #endif
@@ -352,6 +361,9 @@ int main(int argc, char **argv) {
       image_read_back = readback_system.read_image(render_graph, gbuffer.albedo);
     }
     ImGui::Checkbox("Enable jitter", &use_jitter);
+#if USE_RAY_QUERY
+    ImGui::Checkbox("Enable RT AO", &use_rt_ao);
+#endif
     ImGui::End();
 
     ssr.render_ui();
@@ -366,7 +378,17 @@ int main(int argc, char **argv) {
     AdvancedSSRParams assr_params {normal_mat, glm::radians(60.f), float(WIDTH)/HEIGHT, 0.05f, 80.f};    
     
     ssr.run(render_graph, assr_params, draw_params, gbuffer, gtao.raw);
-    gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gbuffer.material, ssr.get_preintegrated_pdf());
+    
+    
+#if USE_RAY_QUERY
+    if (use_rt_ao) {
+      gtao.add_main_rt_pass(render_graph, gtao_rt_params, acceleration_struct.tlas, gbuffer.depth, gbuffer.normal);
+    } else 
+#endif
+    {
+      gtao.add_main_pass(render_graph, gtao_params, gbuffer.depth, gbuffer.normal, gbuffer.material, ssr.get_preintegrated_pdf());
+    }
+
     gtao.add_filter_pass(render_graph, gtao_params, gbuffer.depth);
     gtao.add_accumulate_pass(render_graph, draw_params, gbuffer);
 
@@ -400,6 +422,7 @@ int main(int argc, char **argv) {
     render_graph.remap(gtao.output, gtao.prev_frame);
     taa_pass.remap_targets(render_graph);
     ssr.remap_images(render_graph);
+    gtao.remap(render_graph);
     prev_mvp = projection * camera.get_view_mat();
 
     if (reload_request) {

@@ -67,8 +67,9 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph,
 
   struct PushConsts {
     glm::vec2 min_max_roughness;
+    uint32_t show_ao;
   };
-  PushConsts pc {min_max_roughness};
+  PushConsts pc {min_max_roughness, only_ao? 1u : 0u};
   pipeline.set_rendersubpass({false, {graph.get_descriptor(out_image).format}});
 
   graph.add_task<PassData>("DeferedShading",
@@ -120,5 +121,6 @@ void DeferedShadingPass::draw_ui() {
   ImGui::Begin("DeferedShading");
   ImGui::SliderFloat("Max Roughness", &min_max_roughness.y, min_max_roughness.x, 1.f);
   ImGui::SliderFloat("Min Roughness", &min_max_roughness.x, 0.f, min_max_roughness.y);
+  ImGui::Checkbox("Show AO only", &only_ao);
   ImGui::End();
 }

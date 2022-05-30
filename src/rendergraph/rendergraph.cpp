@@ -1,4 +1,5 @@
 #include "rendergraph.hpp"
+#include <iostream>
 
 namespace rendergraph {
   
@@ -238,14 +239,14 @@ namespace rendergraph {
   }
 
   void RenderGraph::submit() {
-    static bool once = true;
+    static int once = 2;
     tracking_state.flush(resources);
 #if RENDERGRAPH_DEBUG
     tracking_state.dump_barriers();
 #endif
     if (once) {
       tracking_state.dump_barriers();
-      once = false;
+      once--;
     }
 
     auto barriers = tracking_state.take_barriers();
@@ -265,7 +266,7 @@ namespace rendergraph {
 
       tasks[i]->write_commands(res, api_cmd);
       api_cmd.end_renderpass(); //to be sure about barriers
-      if (barriers[i].signal_mask) {
+      if (barriers.size() > i && barriers[i].signal_mask) {
         auto event = gpu.allocate_event();
         barriers[i].release_event = event;
         api_cmd.signal_event(event, barriers[i].signal_mask);

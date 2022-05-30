@@ -116,6 +116,8 @@ void DownsamplePass::run_downsample_depth(
           gpu::TextureBinding {0, resources.get_view(input.depth_tex), sampler});
 
         uint32_t w = desc.width/(1 << i), h = desc.height/(1 << i);
+        w = std::max(w, 1u);
+        h = std::max(h, 1u);
 
         cmd.set_framebuffer(w, h, {resources.get_view(input.depth_rt)});
         cmd.bind_pipeline(downsample_depth);

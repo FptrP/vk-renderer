@@ -80,7 +80,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
   float ggx1  = GeometrySchlickGGX(NdotL, roughness);
   return ggx1 * ggx2;
 }
-
+#if 0  
 float sampleGGXdirPDF(in sampler2D PDF_TEX, in vec3 V, in vec3 N, in vec3 L, float roughness) {
   vec3 Y = normalize(cross(V, N));
   vec3 X = normalize(cross(Y, V));
@@ -103,6 +103,30 @@ float sampleGGXdirPDF(in sampler2D PDF_TEX, in vec3 V, in vec3 N, in vec3 L, flo
   float pdf = alpha2 * brdfG1(alpha2, NdotV)/(2 * PI * NdotV + 0.00001) * texture(PDF_TEX, vec2(p, q)).x;
   return pdf;
 }
+#else
+float sampleGGXdirPDF(in sampler2D PDF_TEX, in vec3 V, in vec3 N, in vec3 L, float alpha) {
+  vec3 Y = normalize(cross(V, N));
+  vec3 X = normalize(cross(Y, V));
+  alpha = clamp(alpha, 0, 0.9);
+  //cos_theta
+  vec3 Lproj = normalize(L -  V * dot(V, L)); 
+  float cos_theta = dot(X, Lproj);
+
+  //normal
+  const float cos_phin = dot(N, X);
+  const float sin_phin = sqrt(1 - cos_phin * cos_phin);
+
+  const float alpha2 = alpha * alpha;
+  const float coef = sqrt(1 - alpha2);
+  const float a = 0.5 * coef * cos_phin * cos_theta + 0.5;
+  const float b = coef * sin_phin;
+
+  float pdf = alpha2/(2 * PI * coef) * texture(PDF_TEX, vec2(a, b)).x;
+  //return max(pdf, 1.0/(2 * PI));
+  //return 1.0/(2 * PI);
+  return pdf;
+}
+#endif
 
 // Input Ve: view direction
 // Input alpha_x, alpha_y: roughness parameters

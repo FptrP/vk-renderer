@@ -17,17 +17,25 @@ namespace scene {
   }
 
   void SceneAccelerationStructure::build(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source) {
-    /*for (const auto &mesh : source.meshes) { TODO: rework
+    for (const auto &mesh : source.root_meshes) { 
       build_blas(transfer_pool, mesh, source);
     }
-    build_tlas(transfer_pool, source);*/
+    build_tlas(transfer_pool, source);
   }
 
-  void SceneAccelerationStructure::build_blas(gpu::TransferCmdPool &transfer_pool, const Mesh &mesh, const CompiledScene &source) {
+  void SceneAccelerationStructure::build_blas(gpu::TransferCmdPool &transfer_pool, const BaseMesh &mesh, const CompiledScene &source) {
     uint32_t verts_count = source.vertex_buffer.get_size()/sizeof(Vertex);
     if (!verts_count) {
       verts_count = 1;
     }
+  
+    std::vector<VkAccelerationStructureGeometryKHR> geometry_data;
+    std::vector<VkAccelerationStructureBuildRangeInfoKHR> prim_data;
+    std::vector<uint32_t> geometry_prims;
+
+    geometry_data.reserve(mesh.primitives.size());
+    prim_data.reserve(mesh.primitives.size());
+    geometry_prims.reserve(mesh.primitives.size());
 
     VkAccelerationStructureGeometryTrianglesDataKHR triangles {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
@@ -48,6 +56,20 @@ namespace scene {
       .geometry {.triangles = triangles},
       .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
     };
+
+    for (const auto &prim : mesh.primitives) {
+      VkAccelerationStructureBuildRangeInfoKHR build_range {
+        .primitiveCount = prim.index_count/3,
+        .primitiveOffset = uint32_t(prim.index_offset * sizeof(uint32_t)),
+        .firstVertex = prim.vertex_offset,
+        .transformOffset = 0
+      };
+
+      geometry_data.push_back(geometry);
+      geometry_prims.push_back(prim.index_count/3);
+      prim_data.push_back(build_range);
+    }
+
     
     VkAccelerationStructureBuildGeometryInfoKHR mesh_info {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
@@ -57,13 +79,12 @@ namespace scene {
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .srcAccelerationStructure = nullptr,
       .dstAccelerationStructure = nullptr,
-      .geometryCount = 1,
-      .pGeometries = &geometry,
+      .geometryCount = (uint32_t)geometry_data.size(),
+      .pGeometries = geometry_data.data(),
       .ppGeometries = nullptr,
       .scratchData = VkDeviceOrHostAddressKHR {.hostAddress = nullptr}
     };
 
-    const uint32_t num_triangles = mesh.index_count/3;
     auto vk_device = gpu::app_device().api_device(); 
 
     VkAccelerationStructureBuildSizesInfoKHR build_info {};
@@ -73,10 +94,10 @@ namespace scene {
     vkGetAccelerationStructureBuildSizesKHR(vk_device, 
       VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, 
       &mesh_info,
-      &num_triangles,
+      geometry_prims.data(),
       &build_info);
     
-    std::cout << build_info.accelerationStructureSize/1024 << "Kb, triangles = " << num_triangles << "\n";
+    std::cout << build_info.accelerationStructureSize/1024 << "\n";
   
     gpu::Buffer storage_buffer;
     storage_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, build_info.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
@@ -101,14 +122,7 @@ namespace scene {
     gpu::Buffer scratch_buffer;
     scratch_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, build_info.buildScratchSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
-    VkAccelerationStructureBuildRangeInfoKHR build_range {
-      .primitiveCount = mesh.index_count/3,
-      .primitiveOffset = uint32_t(mesh.index_offset * sizeof(uint32_t)),
-      .firstVertex = mesh.vertex_offset,
-      .transformOffset = 0
-    };
-
-    auto range_ptr = &build_range;
+    auto range_ptr = prim_data.data();
     
     mesh_info.dstAccelerationStructure = acceleration_struct;
     mesh_info.scratchData.deviceAddress = scratch_buffer.get_device_address();
@@ -128,23 +142,24 @@ namespace scene {
     uint32_t acceleration_struct;
   };
 
-  static void flattern_nodes(std::vector<TLASNode> &out, const Node &node, const glm::mat4 &pre_transform) {
+  static void flattern_nodes(std::vector<TLASNode> &out, const BaseNode &node, const glm::mat4 &pre_transform) {
     TLASNode out_node;
     out_node.transform = pre_transform * node.transform;
+    auto mesh_id = node.mesh_index;
 
-    for (const auto &mesh_id : node.meshes) {
+    if (mesh_id >= 0) {
       out_node.acceleration_struct = mesh_id;
       out.push_back(out_node);
     }
 
     for (const auto &child : node.children) {
-      flattern_nodes(out, *child, out_node.transform);
+      flattern_nodes(out, child, out_node.transform);
     }
   }
 
   void SceneAccelerationStructure::build_tlas(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source) {
     //todo : normal alghorithm
-    /*VkTransformMatrixKHR transform {
+    VkTransformMatrixKHR transform {
 			1.0f, 0.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f
@@ -159,8 +174,11 @@ namespace scene {
 		instance.accelerationStructureReference = 0;
 
     std::vector<TLASNode> nodes;
-    glm::mat4 initial_transform = glm::identity<glm::mat4>();
-    flattern_nodes(nodes, *source.root, initial_transform);
+    for (auto &node : source.base_nodes) {
+      glm::mat4 initial_transform = glm::identity<glm::mat4>();
+      flattern_nodes(nodes, node, initial_transform);
+    }
+    
 
     gpu::Buffer instance_buffer;
     instance_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(instance) * nodes.size(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
@@ -179,7 +197,7 @@ namespace scene {
 
       for (uint32_t y = 0; y < 3; y++) {
         for (uint32_t x = 0; x < 4; x++) {
-          instance.transform.matrix[y][x] = tlas_node.transform[y][x];
+          instance.transform.matrix[y][x] = tlas_node.transform[x][y];
         }
       }
 
@@ -202,7 +220,7 @@ namespace scene {
 		build_geometry.geometryCount = 1;
 		build_geometry.pGeometries = &geometry;
 
-    uint32_t primitive_count = source.meshes.size();
+    uint32_t primitive_count = source.root_meshes.size();
     VkAccelerationStructureBuildSizesInfoKHR build_sizes {};
     build_sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
   
@@ -251,7 +269,7 @@ namespace scene {
     vkBeginCommandBuffer(cmd, &begin_info);
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &build_geometry, &range_ptr);
     vkEndCommandBuffer(cmd);
-    transfer_pool.submit_and_wait();*/
+    transfer_pool.submit_and_wait();
   }
 
 }

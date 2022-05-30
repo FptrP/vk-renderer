@@ -90,10 +90,17 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
     scene_textures.push_back({img.get_view(range), target.samplers[tex_desc.sampler_index]});
   }
 
-  bindless_textures = gpu::allocate_descriptor_set(opaque_taa_pipeline.get_layout(1), {(uint32_t)scene_textures.size()});
-  gpu::write_set(bindless_textures, 
-    gpu::ArrayOfImagesBinding {0, scene_textures});
+  uint32_t count = (uint32_t)scene_textures.size();
+  if (count == 0) {
+    count = 1;
+  }
+
+  bindless_textures = gpu::allocate_descriptor_set(opaque_taa_pipeline.get_layout(1), {count});
   
+  if (scene_textures.size()) {
+    gpu::write_set(bindless_textures, 
+      gpu::ArrayOfImagesBinding {0, scene_textures});
+  }  
 }
 
 static void node_process(const scene::BaseNode &node, std::vector<SceneRenderer::DrawCall> &draw_calls, std::vector<glm::mat4> &transforms, const glm::mat4 &acc) {
@@ -195,14 +202,11 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
         
         for (auto &prim : mesh.primitives) {
           const auto &material = target.materials[prim.material_index];
-          if (material.albedo_tex_index >= scene_textures.size() || material.metalic_roughness_index >= scene_textures.size()) {
-            continue;
-          }
 
           PushData pc {};
           pc.transform_index = draw_call.transform;
-          pc.albedo_index = material.albedo_tex_index;
-          pc.mr_index = material.metalic_roughness_index;
+          pc.albedo_index = (material.albedo_tex_index < scene_textures.size())? material.albedo_tex_index : scene::INVALID_TEXTURE;
+          pc.mr_index = (material.metalic_roughness_index < scene_textures.size())? material.metalic_roughness_index : scene::INVALID_TEXTURE;
           pc.flags = material.clip_alpha? 0xff : 0;
         
           cmd.push_constants_graphics(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushData), &pc);

@@ -9,7 +9,7 @@ namespace scene {
     ~SceneAccelerationStructure();
 
     void build(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source);
-    void build_blas(gpu::TransferCmdPool &transfer_pool, const Mesh &mesh, const CompiledScene &source);
+    void build_blas(gpu::TransferCmdPool &transfer_pool, const BaseMesh &mesh, const CompiledScene &source);
     void build_tlas(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source);
 
     std::vector<gpu::Buffer> blas_buffers;

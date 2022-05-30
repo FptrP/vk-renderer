@@ -36,6 +36,7 @@ GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, boo
   
   info.format = VK_FORMAT_R16G16_SFLOAT;
   accumulated_ao = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
+  accumulated_history = graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, usage);
 
   uint32_t pattern_step = 1u << (uint32_t)pattern_n;
 
@@ -99,14 +100,17 @@ void GTAO::add_main_pass(
 
   struct PushConsts {
     float base_angle;
+    float weight_ratio;
     uint32_t use_mis;
+    uint32_t two_directions;
+    uint32_t reflections_only;
   };
 
   const float angle_offsets[] {60.f, 300.f, 180.f, 240.f, 120.f, 0.f, 300.f, 60.f, 180.f, 120.f, 240.f, 0.f};
   float base_angle = angle_offsets[frame_count % (sizeof(angle_offsets)/sizeof(float))]/360.f;
   base_angle += rand()/float(RAND_MAX) - 0.5;
 
-  PushConsts push_consts {base_angle, mis_gtao};
+  PushConsts push_consts {base_angle, weight_ratio, mis_gtao, two_directions? 255u : 0u, only_reflections? 255u : 0u};
 
   frame_count += 1;
   
@@ -290,15 +294,23 @@ void GTAO::add_accumulate_pass(
     rendergraph::ImageViewId gtao;
     rendergraph::ImageViewId accumulated_ao;
     rendergraph::ImageViewId velocity;
+    rendergraph::ImageViewId history;
   };
 
   struct AccumConstants {
     glm::mat4 inverse_camera;
     glm::mat4 prev_inverse_camera;
+    glm::mat4 mvp;
     glm::vec4 fovy_aspect_znear_zfar;
   };
 
-  AccumConstants constants {glm::inverse(params.camera), glm::inverse(params.prev_camera), params.fovy_aspect_znear_zfar};
+  struct PushConstants {
+    uint32_t clear_history;
+  };
+
+  AccumConstants constants {glm::inverse(params.camera), glm::inverse(params.prev_camera), params.mvp, params.fovy_aspect_znear_zfar};
+  PushConstants pc {clear_history? 1u : 0u};
+  clear_history = false;
 
   graph.add_task<PassData>("GTAO_accumulate",
     [&](PassData &input, rendergraph::RenderGraphBuilder &builder){
@@ -307,6 +319,7 @@ void GTAO::add_accumulate_pass(
       input.gtao = builder.sample_image(filtered, VK_SHADER_STAGE_COMPUTE_BIT);
       input.accumulated_ao = builder.use_storage_image(accumulated_ao, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
       input.velocity = builder.sample_image(gbuffer.downsampled_velocity_vectors, VK_SHADER_STAGE_COMPUTE_BIT);
+      input.history = builder.sample_image(accumulated_history, VK_SHADER_STAGE_COMPUTE_BIT);
     },
     [=](PassData &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
 
@@ -320,13 +333,15 @@ void GTAO::add_accumulate_pass(
         gpu::TextureBinding {2, resources.get_view(input.gtao), sampler},
         gpu::StorageTextureBinding {3, resources.get_view(input.accumulated_ao)},
         gpu::TextureBinding {4, resources.get_view(input.velocity), sampler},
-        gpu::UBOBinding {5, cmd.get_ubo_pool(), blk}
+        gpu::TextureBinding {5, resources.get_view(input.history), sampler},
+        gpu::UBOBinding {6, cmd.get_ubo_pool(), blk}
       );
 
       const auto &extent = resources.get_image(input.accumulated_ao).get_extent();
 
       cmd.bind_pipeline(accumulate_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset});
+      cmd.push_constants_compute(0, sizeof(pc), &pc);
       cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
     });
 }
@@ -513,5 +528,9 @@ void GTAO::add_main_pass_deinterleaved(
 void GTAO::draw_ui() {
   ImGui::Begin("GTAO");
   ImGui::Checkbox("Enable MIS", &mis_gtao);
+  ImGui::Checkbox("Use 2 directions", &two_directions);
+  ImGui::Checkbox("Only reflections ao", &only_reflections);
+  ImGui::SliderFloat("Weight ratio", &weight_ratio, 1.0, 5.0);
+  clear_history = ImGui::Button("Clear history");
   ImGui::End();
 }

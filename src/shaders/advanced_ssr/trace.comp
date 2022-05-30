@@ -121,27 +121,21 @@ void main() {
   imageStore(OUT_RAY, pixel_pos, out_ray_info);
 
   {
-    vec3 sample_end_pos = reconstruct_view_vec(screen_uv + ray_dir.xy, pixel_depth, fovy, aspect, znear, zfar);
     vec3 slice_normal = normalize(cross(w0, R));
     vec3 normal_projected = pixel_normal - dot(pixel_normal, slice_normal) * slice_normal;
     vec3 X = normalize(cross(slice_normal, w0));
     float n = PI/2.0 - acos(dot(normalize(normal_projected), X));
-    
-    bool no_occlusion = h == -1.0; 
+
+    bool no_occlusion = h == -1.0;
     h = acos(h);
     h = min(n + min(h - n, PI/2.0), h);
     
-    float pdf = sampleGGXdirPDF(PDF_TEX, w0, pixel_normal, R, material.g);
-    float pdf_uniform = 1.0/(2.0 * PI);
-    float mis_weight = 1.0 / (pdf + pdf_uniform);
-
+    float pdf = sampleGGXdirPDF(PDF_TEX, w0, pixel_normal, R, roughness);
     float occlusion = (1.0/PI) * length(normal_projected) * 0.25 * max(-cos(2 * h - n) + cos(n) + 2*h*sin(n), 0);
-    //float result = occlusion;
-    float result = occlusion * mis_weight;
+    float result = occlusion;
     result = isnan(result)? 0.0 : result;
-    //result = (material.g < 0.3)? 0.0 : result;
     
-    imageStore(OUT_OCCLUSION, pixel_pos, vec4(no_occlusion? 0.0 : result, no_occlusion? 0 : mis_weight, 0, 0));
+    imageStore(OUT_OCCLUSION, pixel_pos, vec4(no_occlusion? 0.0 : result, no_occlusion? 0 : pdf, 0, 0));
   }
 
 }
@@ -242,28 +236,29 @@ vec3 hierarchical_raymarch_find_hor(in sampler2D depth_tex, vec3 origin, vec3 di
   float current_t;
   vec3 position;
   initial_advance_ray(origin, direction, inv_direction, current_mip_resolution, current_mip_resolution_inv, floor_offset, uv_offset, position, current_t);
-
+  h = 0;
   int i = 0;
   while (i < max_traversal_intersections && current_mip >= most_detailed_mip) {
     vec2 current_mip_position = current_mip_resolution * position.xy;
     float surface_z = texelFetch(depth_tex, ivec2(current_mip_position), current_mip).x;
     bool skipped_tile = advance_ray(origin, direction, inv_direction, current_mip_position, current_mip_resolution_inv, floor_offset, uv_offset, surface_z, position, current_t);
-    bool mip0sample = i < 5;
+    bool mip0sample = i < 15;
 
     current_mip += mip0sample? 0 : (skipped_tile ? 1 : -1);
     current_mip_resolution *= mip0sample? 1 : (skipped_tile ? 0.5 : 2);
     current_mip_resolution_inv *= mip0sample? 1 : (skipped_tile ? 2 : 0.5);
     ++i;
     
-    vec3 v = reconstruct_view_vec(position.xy, surface_z, fovy, aspect, znear, zfar);
-    float next_z = v.z;
-    v -= camera_start;
-    float v_len = length(v);
-    v = (v_len > 0.001)? v/v_len : vec3(0);
-
-    if (next_z < prev_z + 0.5 && current_mip == 0 && v_len < 0.5) {
-      prev_z = next_z;
-      h = max(h, dot(w0, v));
+    
+    vec3 v = reconstruct_view_vec(position.xy, surface_z, fovy, aspect, znear, zfar) - camera_start;
+    if (current_mip <= 1) {
+      float h2 = dot(w0, normalize(v));
+      float c = clamp(20 * (1.5 - length(v)), 0, 1); 
+      if (length(v) < 0.3)
+        h = max(h, h2);
+      /*if (h2 > h)
+        h = mix(h, h2, c);
+      h = mix(h, h2, 0.1 * c);*/
     }
   }
 
