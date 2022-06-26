@@ -7,6 +7,9 @@
 #include <functional>
 #include <string>
 #include <optional>
+#include <memory>
+
+#include <lib/spirv-reflect/spirv_reflect.h>
 
 namespace gpu {
 
@@ -259,6 +262,66 @@ namespace gpu {
     }
   };
 
+  constexpr uint32_t BINDLESS_DESC_COUNT = 1024;
+
+  struct DescriptorSetResources;
+
+  struct ResourceLocation {
+    uint32_t set;
+    uint32_t binding;
+  };
+
+  struct ProgramResources {
+    ~ProgramResources();
+
+    VkShaderStageFlagBits parse_shader(const uint32_t *code, uint32_t size); //size in bytes
+    void create_layout();
+    void create_names_table();
+
+    VkDescriptorSetLayout get_desc_layout(uint32_t index) const;
+    VkPipelineLayout get_pipeline_layout() const { return prog_layout; }
+
+    const DescriptorSetResources &get_resources(uint32_t set_id) const;
+
+    std::optional<ResourceLocation> find_resource(const std::string &name) const;
+
+  private:
+    std::unordered_map<uint32_t, uint32_t> set_to_index;
+    std::vector<DescriptorSetResources> set_resources;
+    std::unordered_map<std::string, ResourceLocation> names; 
+
+    VkPushConstantRange push_consts {0u, 0u, 0u}; 
+
+    std::vector<VkDescriptorSetLayout> set_layouts;
+    VkPipelineLayout prog_layout {nullptr};
+  };
+
+  struct DescriptorSetResources {
+    DescriptorSetResources(uint32_t set) : set_index {set} {}
+    void parse_resources(VkShaderStageFlagBits stage, SpvReflectDescriptorSet *set); //size in bytes
+
+    VkDescriptorSetLayout create_layout();
+
+    auto begin() { return inputs.begin(); }
+    auto end() { return inputs.end(); }
+    auto begin() const { return inputs.begin(); }
+    auto end() const { return inputs.end(); }
+
+    const VkDescriptorSetLayoutBinding &get_binding(uint32_t binding) const;
+    VkDescriptorBindingFlags get_flags(uint32_t binding) const;
+    const std::string &get_binding_name(uint32_t binding) const;
+
+  private:
+    std::unordered_map<uint32_t, uint32_t> bindings;
+    std::vector<VkDescriptorSetLayoutBinding> inputs;
+    std::vector<VkDescriptorBindingFlags> inputs_flags;
+    std::vector<std::string> input_names;
+
+    uint32_t set_index = 0;
+
+    friend ProgramResources;
+  };
+
   struct PipelinePool {
     PipelinePool();
     ~PipelinePool();
@@ -278,8 +341,7 @@ namespace gpu {
     struct ShaderProgram {
       std::vector<ShaderBinding> shader_info;
       std::vector<VkShaderModule> modules;
-      std::unordered_map<uint32_t, VkDescriptorSetLayout> dsl;
-      VkPipelineLayout pipeline_layout;
+      std::unique_ptr<ProgramResources> resources;
     };
 
     struct RenderSubpass {

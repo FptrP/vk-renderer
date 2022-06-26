@@ -31,6 +31,8 @@ namespace gpu {
     g_static_descriptors.reset();
     g_pipeline_pool.release();
     g_sampler_pool.reset();
+    destroy_resources();
+    
     g_swapchain.reset();
     close_context();
   }

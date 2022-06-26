@@ -429,6 +429,8 @@ int main(int argc, char **argv) {
       gpu::reload_shaders();
       reload_request = false;
     }
+
+    gpu::collect_resources();
   }
   
   vkDeviceWaitIdle(gpu::app_device().api_device());

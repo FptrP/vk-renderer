@@ -4,9 +4,6 @@
 #include <fstream>
 #include <cassert>
 
-#include "lib/spirv-cross/spirv_glsl.hpp"
-#include "lib/spirv-cross/spirv_cross.hpp"
-
 #include <sstream>
 #include <initializer_list>
 

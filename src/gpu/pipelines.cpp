@@ -6,8 +6,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "lib/spirv-cross/spirv_glsl.hpp"
-#include "lib/spirv-cross/spirv_cross.hpp"
+#include <lib/spirv-reflect/spirv_reflect.h>
 
 #include <sstream>
 #include <initializer_list>
@@ -51,10 +50,7 @@ namespace gpu {
   }
 
   void PipelinePool::destroy_program(PipelinePool::ShaderProgram &prog) {
-    vkDestroyPipelineLayout(internal::app_vk_device(), prog.pipeline_layout, nullptr);
-    for (auto &pair : prog.dsl) {
-      vkDestroyDescriptorSetLayout(internal::app_vk_device(), pair.second, nullptr);
-    }
+    prog.resources.reset(nullptr);    
     for (auto mod : prog.modules) {
       vkDestroyShaderModule(internal::app_vk_device(), mod, nullptr);
     }
@@ -64,6 +60,221 @@ namespace gpu {
     VkDescriptorSetLayoutBinding binding;
     bool bindless;
   };
+
+  #define SPVR_ASSER(res) if ((res) != SPV_REFLECT_RESULT_SUCCESS) throw std::runtime_error {"SPVReflect error"}
+
+  ProgramResources::~ProgramResources() {
+    if (prog_layout)
+      vkDestroyPipelineLayout(internal::app_vk_device(), prog_layout, nullptr);
+    
+    for (auto layout : set_layouts)
+      vkDestroyDescriptorSetLayout(internal::app_vk_device(), layout, nullptr);
+  }
+
+  VkShaderStageFlagBits ProgramResources::parse_shader(const uint32_t *code, uint32_t size) {
+    SpvReflectShaderModule mod {};
+    
+    if (spvReflectCreateShaderModule(size, code, &mod) != SPV_REFLECT_RESULT_SUCCESS) {
+      throw std::runtime_error {"Shader parsing error"};
+    }
+
+    VkShaderStageFlagBits stage = static_cast<VkShaderStageFlagBits>(mod.shader_stage);
+
+    uint32_t count = 0;
+    SPVR_ASSER(spvReflectEnumerateDescriptorSets(&mod, &count, nullptr));
+
+    std::vector<SpvReflectDescriptorSet*> sets(count);
+    SPVR_ASSER(spvReflectEnumerateDescriptorSets(&mod, &count, sets.data()));
+    
+    for (auto set : sets) {
+      uint32_t index = 0;
+      
+      auto it = set_to_index.find(set->set);
+      if (it == set_to_index.end()) {
+        index = set_resources.size();
+        set_to_index[set->set] = index;
+        set_resources.emplace_back(set->set);    
+      } else {
+        index = it->second;
+      }
+
+      set_resources.at(index).parse_resources(stage, set);
+    }
+
+    if (mod.push_constant_block_count > 1) {
+      throw std::runtime_error {"Only 1 push_const block is supported"};
+    }
+
+    if (mod.push_constant_block_count) {
+      auto &blk = mod.push_constant_blocks[0];
+      if (blk.offset != 0) {
+        throw std::runtime_error {"PushConst offset n e 0"};
+      }
+
+      if (!push_consts.stageFlags) {
+        push_consts.size = blk.size;
+      } else if (push_consts.size != blk.size) {
+        throw std::runtime_error {"PushConst size mismatch"};
+      }
+
+      push_consts.stageFlags |= stage;
+    }
+
+    spvReflectDestroyShaderModule(&mod);
+    return stage;
+  }
+
+  const DescriptorSetResources &ProgramResources::get_resources(uint32_t set_id) const {
+    auto it = set_to_index.find(set_id);
+    
+    if (it == set_to_index.end())
+      throw std::runtime_error {"set_id out of bounds"};
+
+    return set_resources.at(it->second);  
+  }
+
+  VkDescriptorSetLayout ProgramResources::get_desc_layout(uint32_t set_id) const {
+     auto it = set_to_index.find(set_id);
+    
+    if (it == set_to_index.end())
+      throw std::runtime_error {"set_id out of bounds"};
+
+    return set_layouts.at(it->second);
+  }
+
+  std::optional<ResourceLocation> ProgramResources::find_resource(const std::string &name) const {
+    auto it = names.find(name);
+    if (it == names.end())
+      return {};
+    return it->second;
+  }
+
+  void ProgramResources::create_layout() {
+    for (auto &res : set_resources) {
+      auto layout = res.create_layout();
+      set_layouts.push_back(layout);
+    }
+
+    VkPipelineLayoutCreateInfo info {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = 0,
+      .setLayoutCount = (uint32_t)set_layouts.size(),
+      .pSetLayouts = set_layouts.data(),
+      .pushConstantRangeCount = 0,
+      .pPushConstantRanges = nullptr
+    };
+
+    if (push_consts.stageFlags) {
+      info.pushConstantRangeCount = 1;
+      info.pPushConstantRanges = &push_consts;
+    }
+
+    VKCHECK(vkCreatePipelineLayout(internal::app_vk_device(), &info, nullptr, &prog_layout));
+  }
+
+  void ProgramResources::create_names_table() {
+    for (const auto &set : set_resources) {
+      for (uint32_t i = 0; i < set.input_names.size(); i++) {
+        if (!set.input_names[i].length())
+          continue;
+        names[set.input_names[i]] = ResourceLocation {set.set_index, set.inputs[i].binding};
+      }
+    }
+  }
+
+
+  void DescriptorSetResources::parse_resources(VkShaderStageFlagBits stage, SpvReflectDescriptorSet *set) {
+    for (uint32_t i = 0u; i < set->binding_count; i++) {
+      const auto &spv_binding = *set->bindings[i];
+      
+      uint32_t spv_binding_count = 1;
+      for (uint32_t i = 0; i < spv_binding.array.dims_count; i++) {
+        spv_binding_count *= spv_binding.array.dims[i];
+      }
+
+      auto spv_desc_type = static_cast<VkDescriptorType>(spv_binding.descriptor_type);
+      if (spv_desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+        spv_desc_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+
+      bool spv_bindless = spv_binding_count == 0;
+      if (spv_bindless) {
+        spv_binding_count = BINDLESS_DESC_COUNT;
+      }
+
+      auto it = bindings.find(spv_binding.binding);
+      if (it != bindings.end()) {
+        auto &api_binding = inputs[it->second];
+
+        if (api_binding.descriptorType != spv_desc_type)  {
+          throw std::runtime_error {"Incompatible desc. type"};
+        }
+
+        if (api_binding.descriptorCount != spv_binding_count) {
+          throw std::runtime_error {"Bindings count mismatch"};
+        }
+
+        api_binding.stageFlags |= stage;
+        continue;
+      }
+
+      VkDescriptorSetLayoutBinding api_binding {};
+      api_binding.binding = spv_binding.binding;
+      api_binding.descriptorType = spv_desc_type;
+      api_binding.stageFlags = stage;
+      api_binding.descriptorCount = spv_binding_count;
+      
+      auto index = inputs.size();
+      
+      inputs.push_back(api_binding);
+      inputs_flags.push_back(spv_bindless? (VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT|VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT) : 0);
+      input_names.push_back(spv_binding.name);
+      
+      bindings[spv_binding.binding] = index;
+    }
+  }
+
+  const VkDescriptorSetLayoutBinding &DescriptorSetResources::get_binding(uint32_t binding) const {
+    auto it = bindings.find(binding);
+    if (it == bindings.end())
+      throw std::runtime_error {"Binding not found"};
+    return inputs.at(it->second);
+  }
+
+  VkDescriptorBindingFlags DescriptorSetResources::get_flags(uint32_t binding) const {
+    auto it = bindings.find(binding);
+    if (it == bindings.end())
+      throw std::runtime_error {"Binding not found"};
+    return inputs_flags.at(it->second);
+  }
+
+  const std::string &DescriptorSetResources::get_binding_name(uint32_t binding) const {
+    auto it = bindings.find(binding);
+    if (it == bindings.end())
+      throw std::runtime_error {"Binding not found"};
+    return input_names.at(it->second);
+  }
+
+  VkDescriptorSetLayout DescriptorSetResources::create_layout() {
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+      .pNext = nullptr,
+      .bindingCount = (uint32_t)inputs_flags.size(),
+      .pBindingFlags = inputs_flags.data()
+    };
+
+    VkDescriptorSetLayoutCreateInfo info {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .pNext = &flags_info,
+      .flags = 0,
+      .bindingCount = (uint32_t)inputs.size(),
+      .pBindings = inputs.data()
+    };
+
+    VkDescriptorSetLayout layout = nullptr;
+    VKCHECK(vkCreateDescriptorSetLayout(internal::app_vk_device(), &info, nullptr, &layout));
+    return layout;
+  }
 
   using LayoutBuilder = std::map<uint32_t, std::unordered_map<uint32_t, ResourceBinding>>;
 
@@ -99,7 +310,6 @@ namespace gpu {
     if (is_compute_pipeline && bindings.size() != 1) {
       throw std::runtime_error {"Error, usage of compute shader with other stages"};
     }
-    
   }
 
   static std::vector<char> read_file(const std::string& filename) {
@@ -132,101 +342,6 @@ namespace gpu {
     return shaderModule;
   }
 
-  static void add_resources(LayoutBuilder &builder, const spirv_cross::Compiler &comp, VkShaderStageFlagBits stage, const spirv_cross::Resource *res, uint32_t count, VkDescriptorType desc_type) {
-    for (uint32_t i = 0; i < count; i++) {
-      auto resource = res[i];
-      auto set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
-      auto binding = comp.get_decoration(resource.id, spv::DecorationBinding);  
-      bool bindless = false;
-
-      const auto &type = comp.get_type(resource.type_id);
-      uint32_t desc_count = 1;
-      if (type.array.size()) {
-        for (auto elem : type.array) {
-          desc_count *= elem;
-        }
-      }
-
-      if (desc_count == 0) { //bindless resource
-        const uint32_t max_bindless_resources = 1024;
-        desc_count = max_bindless_resources;
-        bindless = true;
-      }
-
-      if (!builder[set].count(binding)) { //first creation
-        VkDescriptorSetLayoutBinding api_binding {
-          .binding = binding,
-          .descriptorType = desc_type,
-          .descriptorCount = desc_count,
-          .stageFlags = stage,
-          .pImmutableSamplers = nullptr
-        };
-        builder[set][binding] = ResourceBinding{api_binding, bindless};
-      }
-
-      auto &desc = builder[set][binding];
-      if (desc.binding.descriptorType != desc_type) {
-        throw std::runtime_error {"Incompatible type for descriptors"};
-      }
-
-      if (desc.binding.descriptorCount != desc_count) {
-        throw std::runtime_error {"Incompatible array declaration"};
-      }
-
-      if (desc.bindless != bindless) {
-        throw std::runtime_error {"Incorrect bindless resource redeclaration"};
-      }
-      
-      desc.binding.stageFlags |= stage;
-    }
-  }
-
-  static VkShaderModule load_module(VkDevice api_device, const ShaderBinding &shader, LayoutBuilder &layouts, VkPushConstantRange &push_const) {
-    auto code = read_file(shader.path);
-    if (code.size() % sizeof(uint32_t)) {
-      throw std::runtime_error {"Shader is not valid spirv-file"};
-    }
-
-    auto mod = create_shader_module(api_device, code);
-    
-    spirv_cross::Compiler compiler {(const uint32_t*)code.data(), code.size()/sizeof(uint32_t)};
-    auto resources = compiler.get_shader_resources();
-    
-    try {
-      add_resources(layouts, compiler, shader.stage, resources.storage_images.data(), resources.storage_images.size(), VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-      add_resources(layouts, compiler, shader.stage, resources.storage_buffers.data(), resources.storage_buffers.size(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-      add_resources(layouts, compiler, shader.stage, resources.uniform_buffers.data(), resources.uniform_buffers.size(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
-      add_resources(layouts, compiler, shader.stage, resources.sampled_images.data(), resources.sampled_images.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-      add_resources(layouts, compiler, shader.stage, resources.separate_images.data(), resources.separate_images.size(), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-      add_resources(layouts, compiler, shader.stage, resources.separate_samplers.data(), resources.separate_samplers.size(), VK_DESCRIPTOR_TYPE_SAMPLER);
-      add_resources(layouts, compiler, shader.stage, resources.acceleration_structures.data(), resources.acceleration_structures.size(), VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
-    }
-    catch(...) {
-      vkDestroyShaderModule(api_device, mod, nullptr);
-      throw;
-    }
-
-    if (resources.push_constant_buffers.size() > 1) {
-      vkDestroyShaderModule(api_device, mod, nullptr);
-      throw std::runtime_error {"Unsupported push_countants layout"};
-    }
-
-    if (resources.push_constant_buffers.size()) {
-      const auto &resource = resources.push_constant_buffers[0];
-      const auto &type = compiler.get_type(resource.base_type_id);
-      size_t size = compiler.get_declared_struct_size(type);
-      if (push_const.size && push_const.size != size) {
-        vkDestroyShaderModule(api_device, mod, nullptr);
-        throw std::runtime_error {"Conflicting declarations for push_constatnts"};
-      }
-
-      push_const.size = size;
-      push_const.stageFlags |= shader.stage;
-    }
-
-    return mod;
-  }
-
   void PipelinePool::create_program(const std::string &name, std::vector<ShaderBinding> &&bindings) {
     if (programs.count(name)) {
       throw std::runtime_error {"Attemp to recreate shader program"};
@@ -240,95 +355,41 @@ namespace gpu {
       std::move(bindings),
       {},
       {},
-      nullptr
     });
     create_program(allocated_programs[index]);
   }
 
   void PipelinePool::create_program(ShaderProgram &prog) {
-    if (prog.pipeline_layout) {
-      vkDestroyPipelineLayout(internal::app_vk_device(), prog.pipeline_layout, nullptr);
-      prog.pipeline_layout = nullptr;
-    }
-
-    for (auto &desc : prog.dsl) {
-      vkDestroyDescriptorSetLayout(internal::app_vk_device(), desc.second, nullptr);
-    }
+    prog.resources.reset(new ProgramResources {});
 
     for (auto &shader : prog.modules) {
       vkDestroyShaderModule(internal::app_vk_device(), shader, nullptr);
     }
 
-    prog.modules.clear();
-    prog.dsl.clear();
-
-    LayoutBuilder layout_builder;
-    VkPushConstantRange push_const {0, 0, 0};
     std::vector<VkShaderModule> modules;
-    
+    VkShaderModule mod = nullptr;
+
     for (const auto &binding : prog.shader_info) {
       try {
-        modules.push_back(load_module(internal::app_vk_device(), binding, layout_builder, push_const));
+        auto code = read_file(binding.path);
+        mod = create_shader_module(internal::app_vk_device(), code);
+        prog.resources->parse_shader((const uint32_t*)code.data(), code.size());
+        modules.push_back(mod);
       }
       catch(...) {
         for (auto mod : modules) {
           vkDestroyShaderModule(internal::app_vk_device(), mod, nullptr);
         }
+        if (mod) {
+           vkDestroyShaderModule(internal::app_vk_device(), mod, nullptr);
+        }
         throw;
       }
     }
 
-    std::unordered_map<uint32_t, VkDescriptorSetLayout> api_layouts;
-    std::vector<VkDescriptorSetLayout> vec_layouts;
-    for (const auto &[set_id, bindings] : layout_builder) {
-      std::vector<VkDescriptorSetLayoutBinding> api_bindings;
-      std::vector<VkDescriptorBindingFlags> binding_flags;
-
-      for (const auto &[id, binding] : bindings) {
-        api_bindings.push_back(binding.binding);
-        binding_flags.push_back(binding.bindless? VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT|VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT : 0);
-      }
-      
-      VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-        .pNext = nullptr,
-        .bindingCount = (uint32_t)binding_flags.size(),
-        .pBindingFlags = binding_flags.data()
-      };
-
-      VkDescriptorSetLayoutCreateInfo info {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = &flags_info,
-        .flags = 0,
-        .bindingCount = (uint32_t)api_bindings.size(),
-        .pBindings = api_bindings.data()
-      };
-
-      VKCHECK(vkCreateDescriptorSetLayout(internal::app_vk_device(), &info, nullptr, &api_layouts[set_id]));
-      vec_layouts.push_back(api_layouts[set_id]);
-    }
-
-    VkPipelineLayoutCreateInfo info {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .pNext = nullptr,
-      .flags = 0,
-      .setLayoutCount = (uint32_t)api_layouts.size(),
-      .pSetLayouts = vec_layouts.data(),
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = nullptr
-    };
-
-    if (push_const.stageFlags) {
-      info.pushConstantRangeCount = 1;
-      info.pPushConstantRanges = &push_const;
-    }
-
-    VkPipelineLayout pipeline_layout;
-    VKCHECK(vkCreatePipelineLayout(internal::app_vk_device(), &info, nullptr, &pipeline_layout));
-
-    prog.pipeline_layout = pipeline_layout;
+    prog.resources->create_layout();
+    prog.resources->create_names_table();
     prog.modules = std::move(modules);
-    prog.dsl = std::move(api_layouts);
   }
 
   void PipelinePool::reload_programs() {
@@ -476,7 +537,7 @@ namespace gpu {
       throw std::runtime_error {"Pipeline not attached to program"};
     }
     const auto &prog = pool->get_program(program_id.value());
-    return prog.dsl.at(index);
+    return prog.resources->get_desc_layout(index);
   }
   
   VkPipelineLayout BasePipeline::get_pipeline_layout() const {
@@ -484,7 +545,7 @@ namespace gpu {
       throw std::runtime_error {"Pipeline not attached to program"};
     }
     const auto &prog = pool->get_program(program_id.value());
-    return prog.pipeline_layout;
+    return prog.resources->get_pipeline_layout();
   }
 
   VkPipeline PipelinePool::get_pipeline(const ComputePipeline &pipeline) {
@@ -514,7 +575,7 @@ namespace gpu {
       .pNext = nullptr,
       .flags = 0,
       .stage = stage,
-      .layout = prog.pipeline_layout,
+      .layout = prog.resources->get_pipeline_layout(),
       .basePipelineHandle = nullptr,
       .basePipelineIndex = 0
     };
@@ -641,7 +702,7 @@ namespace gpu {
     info.pTessellationState = nullptr;
     info.renderPass = renderpass;
     info.subpass = 0;
-    info.layout = prog.pipeline_layout;
+    info.layout = prog.resources->get_pipeline_layout();
 
     VKCHECK(vkCreateGraphicsPipelines(internal::app_vk_device(), vk_cache, 1, &info, nullptr, &res.handle));
 

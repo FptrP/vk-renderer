@@ -3,6 +3,9 @@
 
 #include "resources.hpp"
 #include "dynbuffer.hpp"
+#include "pipelines.hpp"
+
+#include <bitset>
 
 namespace gpu {
   struct BaseBinding;
@@ -236,7 +239,23 @@ namespace gpu {
     }
   }
 
-  
+  constexpr uint32_t MAX_RES_SLOTS = 64;
+
+  struct DescriptorSetTable {
+  private:
+    uint32_t slots_used = 0;
+    std::array<VkWriteDescriptorSet, MAX_RES_SLOTS> slots; 
+    std::bitset<MAX_RES_SLOTS> modified;
+  };
+
+  struct Binder {
+    void load(const BasePipeline &pipeline);
+    
+    void set(uint32_t set, uint32_t binding, VkBuffer buf, size_t offset, size_t range);
+    void set(uint32_t set, uint32_t binding, VkImageView view, VkSampler sampler);
+
+    void flush(VkCommandBuffer cmd);
+  };
 }
 
 #endif

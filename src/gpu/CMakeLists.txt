@@ -8,6 +8,7 @@ set(CMAKE_CXX_FLAGS "-Wall -g -pthread")
 
 set(spv-dir "../lib/spirv-cross")
 set(imgui-dir "../lib/imgui")
+set(lib-dir "../lib")
 
 set(spirv-cross-sources
 	${spv-dir}/spirv_cross.cpp
@@ -30,12 +31,14 @@ add_library(vk-gpu STATIC
   swapchain.cpp
   pipelines.cpp
   resources.cpp
+  managed_resources.cpp
   shader.cpp
   cmd_buffers.cpp
   samplers.cpp
   gpu.cpp
+  #"${lib-dir}/spirv-reflect/spirv-reflect.cpp"
+  ../lib/spirv-reflect/spirv_reflect.cpp
   ${imgui-sources}
-  ${spirv-cross-sources}
   ../lib/volk.c)
 
 target_link_libraries(vk-gpu dl ${Vulkan_LIBRARIES})

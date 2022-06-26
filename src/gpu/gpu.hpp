@@ -10,6 +10,7 @@
 #include "samplers.hpp"
 #include "descriptors.hpp"
 #include "resources.hpp"
+#include "managed_resources.hpp"
 
 #include <functional>
 

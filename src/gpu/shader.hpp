@@ -7,7 +7,6 @@
 #include <map>
 #include <optional>
 
-#include "lib/spirv-cross/spirv_cross.hpp"
 #include "driver.hpp"
 
 namespace gpu {

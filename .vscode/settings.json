@@ -76,7 +76,8 @@
     "variant": "cpp",
     "codecvt": "cpp",
     "future": "cpp",
-    "filesystem": "cpp"
+    "filesystem": "cpp",
+    "span": "cpp"
   },
   "cmake.configureOnOpen": false
 }
