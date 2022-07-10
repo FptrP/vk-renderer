@@ -402,7 +402,9 @@ namespace gpu {
       vkDestroyPipeline(internal::app_vk_device(), desc.second.handle, nullptr);
       desc.second.handle = nullptr;
     }
-  
+    
+    shader_programs.reload();
+
     for (auto &shader : allocated_programs) {
       create_program(shader);
     }
@@ -546,6 +548,14 @@ namespace gpu {
     }
     const auto &prog = pool->get_program(program_id.value());
     return prog.resources->get_pipeline_layout();
+  }
+
+  const ProgramResources &BasePipeline::get_resources() const {
+    if (!program_id.has_value()) {
+      throw std::runtime_error {"Pipeline not attached to program"};
+    }
+    const auto &prog = pool->get_program(program_id.value());
+    return *prog.resources;
   }
 
   VkPipeline PipelinePool::get_pipeline(const ComputePipeline &pipeline) {

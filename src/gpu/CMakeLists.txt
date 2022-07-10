@@ -32,6 +32,8 @@ add_library(vk-gpu STATIC
   pipelines.cpp
   resources.cpp
   managed_resources.cpp
+  descriptors.cpp
+  shader_program.cpp
   shader.cpp
   cmd_buffers.cpp
   samplers.cpp

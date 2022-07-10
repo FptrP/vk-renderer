@@ -2,6 +2,7 @@
 #define PIPELINES_HPP_INCLUDED
 
 #include "driver.hpp"
+#include "shader_program.hpp"
 
 #include <vector>
 #include <functional>
@@ -178,6 +179,7 @@ namespace gpu {
   };
 
   struct PipelinePool;
+  struct ProgramResources;
 
   struct BasePipeline {
     BasePipeline() {}
@@ -191,6 +193,9 @@ namespace gpu {
     
     bool is_attached() const { return pool != nullptr; }
     bool has_program() const { return program_id.has_value(); }
+
+    const ProgramResources &get_resources() const;
+
   protected:
     PipelinePool *pool {nullptr};
     std::optional<uint32_t> program_id {};
@@ -284,7 +289,9 @@ namespace gpu {
     const DescriptorSetResources &get_resources(uint32_t set_id) const;
 
     std::optional<ResourceLocation> find_resource(const std::string &name) const;
-
+    
+    const std::vector<DescriptorSetResources> &get_resources() const { return set_resources; }
+    
   private:
     std::unordered_map<uint32_t, uint32_t> set_to_index;
     std::vector<DescriptorSetResources> set_resources;
@@ -307,10 +314,15 @@ namespace gpu {
     auto begin() const { return inputs.begin(); }
     auto end() const { return inputs.end(); }
 
+    uint32_t bindings_count() const { return inputs.size(); }
+
     const VkDescriptorSetLayoutBinding &get_binding(uint32_t binding) const;
     VkDescriptorBindingFlags get_flags(uint32_t binding) const;
     const std::string &get_binding_name(uint32_t binding) const;
 
+    const VkDescriptorSetLayoutBinding &get_binding_raw(uint32_t index) const { return inputs[index]; }
+    const VkDescriptorBindingFlags &get_flags_raw(uint32_t index) const { return inputs_flags[index]; }
+    uint32_t get_set_id() const { return set_index; }
   private:
     std::unordered_map<uint32_t, uint32_t> bindings;
     std::vector<VkDescriptorSetLayoutBinding> inputs;
@@ -359,6 +371,8 @@ namespace gpu {
 
     std::unordered_map<std::string, uint32_t> programs;
     std::vector<ShaderProgram> allocated_programs;
+
+    ShaderProgramManager shader_programs;
 
     std::unordered_map<RenderSubpassDesc, uint32_t, HashFunc<RenderSubpassDesc>> render_subpasses;
     std::vector<RenderSubpass> allocated_subpasses;

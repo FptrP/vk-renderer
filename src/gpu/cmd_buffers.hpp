@@ -11,6 +11,7 @@
 
 #include "gpu/pipelines.hpp"
 #include "gpu/dynbuffer.hpp"
+#include "descriptors.hpp"
 
 namespace gpu {
 
@@ -212,6 +213,7 @@ namespace gpu {
     UniformBufferPool ubo_pool;
 
     std::vector<CtxResource*> delayed_free {};
+    std::shared_ptr<DescriptorBinder> binder_state; 
 
     void flush_framebuffer_state(VkRenderPass renderpass);
   };

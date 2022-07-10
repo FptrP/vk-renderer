@@ -68,6 +68,10 @@ namespace gpu {
     VkCommandBufferBeginInfo info {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &info);
+
+    if (binder_state) {
+      binder_state->clear();
+    }
   }
   
   void CmdContext::end() {
