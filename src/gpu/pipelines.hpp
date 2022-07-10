@@ -194,7 +194,7 @@ namespace gpu {
     bool is_attached() const { return pool != nullptr; }
     bool has_program() const { return program_id.has_value(); }
 
-    const ProgramResources &get_resources() const;
+    //const ProgramResources &get_resources() const;
 
   protected:
     PipelinePool *pool {nullptr};
@@ -269,93 +269,41 @@ namespace gpu {
 
   constexpr uint32_t BINDLESS_DESC_COUNT = 1024;
 
-  struct DescriptorSetResources;
-
-  struct ResourceLocation {
-    uint32_t set;
-    uint32_t binding;
-  };
-
-  struct ProgramResources {
-    ~ProgramResources();
-
-    VkShaderStageFlagBits parse_shader(const uint32_t *code, uint32_t size); //size in bytes
-    void create_layout();
-    void create_names_table();
-
-    VkDescriptorSetLayout get_desc_layout(uint32_t index) const;
-    VkPipelineLayout get_pipeline_layout() const { return prog_layout; }
-
-    const DescriptorSetResources &get_resources(uint32_t set_id) const;
-
-    std::optional<ResourceLocation> find_resource(const std::string &name) const;
-    
-    const std::vector<DescriptorSetResources> &get_resources() const { return set_resources; }
-    
-  private:
-    std::unordered_map<uint32_t, uint32_t> set_to_index;
-    std::vector<DescriptorSetResources> set_resources;
-    std::unordered_map<std::string, ResourceLocation> names; 
-
-    VkPushConstantRange push_consts {0u, 0u, 0u}; 
-
-    std::vector<VkDescriptorSetLayout> set_layouts;
-    VkPipelineLayout prog_layout {nullptr};
-  };
-
-  struct DescriptorSetResources {
-    DescriptorSetResources(uint32_t set) : set_index {set} {}
-    void parse_resources(VkShaderStageFlagBits stage, SpvReflectDescriptorSet *set); //size in bytes
-
-    VkDescriptorSetLayout create_layout();
-
-    auto begin() { return inputs.begin(); }
-    auto end() { return inputs.end(); }
-    auto begin() const { return inputs.begin(); }
-    auto end() const { return inputs.end(); }
-
-    uint32_t bindings_count() const { return inputs.size(); }
-
-    const VkDescriptorSetLayoutBinding &get_binding(uint32_t binding) const;
-    VkDescriptorBindingFlags get_flags(uint32_t binding) const;
-    const std::string &get_binding_name(uint32_t binding) const;
-
-    const VkDescriptorSetLayoutBinding &get_binding_raw(uint32_t index) const { return inputs[index]; }
-    const VkDescriptorBindingFlags &get_flags_raw(uint32_t index) const { return inputs_flags[index]; }
-    uint32_t get_set_id() const { return set_index; }
-  private:
-    std::unordered_map<uint32_t, uint32_t> bindings;
-    std::vector<VkDescriptorSetLayoutBinding> inputs;
-    std::vector<VkDescriptorBindingFlags> inputs_flags;
-    std::vector<std::string> input_names;
-
-    uint32_t set_index = 0;
-
-    friend ProgramResources;
-  };
-
   struct PipelinePool {
     PipelinePool();
     ~PipelinePool();
 
     void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders) {
-      std::vector<ShaderBinding> bindings {shaders.begin(), shaders.end()};
-      create_program(name, std::move(bindings));
+
+      std::vector<std::string> shader_path;
+      shader_path.reserve(shaders.size());
+      for (auto &s : shaders) {
+        shader_path.push_back(s.path);
+      }
+      
+      create_program(name, std::move(shader_path));
     }
     
-    void create_program(const std::string &name, std::vector<ShaderBinding> &&bindings);
+    void create_program(const std::string &name, std::vector<std::string> &&shaders) {
+      shader_programs.create_program(name, shaders);
+    }
+
+    void create_program(const std::string &name, std::vector<ShaderBinding> &&bindings) {
+      std::vector<std::string> shader_path;
+      shader_path.reserve(bindings.size());
+      for (auto &s : bindings) {
+        shader_path.push_back(s.path);
+      }
+      
+      create_program(name, std::move(shader_path));
+    }
+
     void reload_programs();
     
     PipelinePool(const PipelinePool &) = delete;
     const PipelinePool &operator=(const PipelinePool &) = delete;
   private:
     
-    struct ShaderProgram {
-      std::vector<ShaderBinding> shader_info;
-      std::vector<VkShaderModule> modules;
-      std::unique_ptr<ProgramResources> resources;
-    };
-
     struct RenderSubpass {
       RenderSubpassDesc desc;
       VkRenderPass handle = nullptr;
@@ -368,9 +316,6 @@ namespace gpu {
     };
 
     VkPipelineCache vk_cache {nullptr};
-
-    std::unordered_map<std::string, uint32_t> programs;
-    std::vector<ShaderProgram> allocated_programs;
 
     ShaderProgramManager shader_programs;
 
@@ -386,23 +331,17 @@ namespace gpu {
     std::unordered_map<ComputePipeline, Pipeline, HashFunc<ComputePipeline>> compute_pipelines;
     std::unordered_map<GraphicsPipeline, Pipeline, HashFunc<GraphicsPipeline>> graphics_pipelines;
 
-    void create_program(ShaderProgram &prog);
-
     uint32_t get_subpass_index(const RenderSubpassDesc &desc);
     VkRenderPass get_subpass(uint32_t subpass_index);
     const RenderSubpassDesc &get_subpass_desc(uint32_t subpass_index) const;
 
     uint32_t get_program_index(const std::string &name) const;
-    ShaderProgram &get_program(uint32_t index);
-    const ShaderProgram &get_program(uint32_t index) const;
 
     uint32_t get_vinput_index(const VertexInput &vinput);
     const VertexInput &get_vinput(uint32_t index) const;
 
     uint32_t get_registers_index(const Registers &registers);
     const Registers &get_registers(uint32_t index) const ;
-
-    void destroy_program(ShaderProgram &prog);
 
     VkPipeline get_pipeline(const ComputePipeline &pipeline);
     VkPipeline get_pipeline(const GraphicsPipeline &pipeline);

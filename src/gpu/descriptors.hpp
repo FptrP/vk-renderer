@@ -375,7 +375,7 @@ namespace gpu {
       return rebind;
     }
 
-    void init(const DescriptorSetResources &set, BinderAllocator &allocator);
+    //void init(const DescriptorSetResources &set, BinderAllocator &allocator);
     void update(UpdateState &state, VkDescriptorSet new_set, VkDescriptorSet old_set);
     void clear();
     

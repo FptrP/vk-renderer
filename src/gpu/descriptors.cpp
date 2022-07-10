@@ -63,7 +63,7 @@ namespace gpu {
     }
   }
   
-  void DescriptorSetState::init(const DescriptorSetResources &set, BinderAllocator &allocator) {
+  /*void DescriptorSetState::init(const DescriptorSetResources &set, BinderAllocator &allocator) {
     if (set.bindings_count() > MAX_RES_SLOTS)
       throw std::runtime_error {"Too many resource bingings"};
     
@@ -124,7 +124,7 @@ namespace gpu {
         ptr += slot.count;
       }
     }
-  }
+  }*/
   
   void DescriptorSetState::update(UpdateState &state, VkDescriptorSet new_set, VkDescriptorSet old_set) {
     for (uint32_t i = 0; i < max_slots_used; i++) {
@@ -189,7 +189,7 @@ namespace gpu {
   }
 
   void DescriptorBinder::init_base(const BasePipeline &pipeline) {
-    auto new_layout = pipeline.get_pipeline_layout();
+    /*auto new_layout = pipeline.get_pipeline_layout();
     if (layout == new_layout)
       return;
 
@@ -215,7 +215,7 @@ namespace gpu {
       set_slot.rebind = true;
       set_slot.layout = resources.get_desc_layout(set_id);
       set_slot.state->init(pipeline_set, binder_allocator);
-    }
+    }*/
 
   }
   

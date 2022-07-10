@@ -52,6 +52,8 @@ namespace gpu {
       valid_bindings.set(spv_binding.binding);
       bindings[spv_binding.binding] = api_binding;
       flags[spv_binding.binding] = spv_bindless? (VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT|VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT) : 0;
+
+      used_bindings = ((spv_binding.binding + 1) > used_bindings)? (spv_binding.binding + 1) : used_bindings; 
     }
   }
 
