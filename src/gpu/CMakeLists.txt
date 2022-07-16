@@ -37,6 +37,7 @@ add_library(vk-gpu STATIC
   shader.cpp
   cmd_buffers.cpp
   samplers.cpp
+  framebuffers.cpp
   gpu.cpp
   #"${lib-dir}/spirv-reflect/spirv-reflect.cpp"
   ../lib/spirv-reflect/spirv_reflect.cpp

@@ -69,12 +69,6 @@ namespace gpu {
   };
 
   struct DescriptorSetLayoutHash {
-    template <typename T>
-    static inline void hash_combine(std::size_t &s, const T &v) {
-      std::hash<T> h;
-      s ^= h(v) + 0x9e3779b9 + (s<< 6) + (s>> 2); 
-    }
-
     std::size_t operator()(const DescriptorSetLayoutInfo &res) const {
       std::size_t h = 0;
       for (uint32_t i = 0; i < res.used_bindings; i++) {

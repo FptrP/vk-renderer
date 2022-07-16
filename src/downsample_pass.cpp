@@ -77,9 +77,9 @@ void DownsamplePass::run_downsample_gbuff(
           gpu::TextureBinding {2, resources.get_view(input.gbuffer_velocity), sampler});
 
         cmd.set_framebuffer(norm_ext.width, norm_ext.height, {
-          resources.get_view(input.out_normal),
-          resources.get_view(input.out_velocity),
-          resources.get_view(input.out_depth)});
+          resources.get_image_range(input.out_normal),
+          resources.get_image_range(input.out_velocity),
+          resources.get_image_range(input.out_depth)});
 
         cmd.bind_pipeline(downsample_gbuffer);
         cmd.bind_descriptors_graphics(0, {set});
@@ -119,7 +119,7 @@ void DownsamplePass::run_downsample_depth(
         w = std::max(w, 1u);
         h = std::max(h, 1u);
 
-        cmd.set_framebuffer(w, h, {resources.get_view(input.depth_rt)});
+        cmd.set_framebuffer(w, h, {resources.get_image_range(input.depth_rt)});
         cmd.bind_pipeline(downsample_depth);
         cmd.bind_descriptors_graphics(0, {set});
         cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);

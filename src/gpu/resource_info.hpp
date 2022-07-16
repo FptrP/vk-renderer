@@ -33,6 +33,15 @@ namespace gpu {
         && (base_layer == o.base_layer)
         && (layers_count == o.layers_count); 
     }
+
+    bool operator!=(const ImageViewRange &o) const {
+      return (type != o.type)
+        || (aspect != o.aspect)
+        || (base_mip != o.base_mip)
+        || (mips_count != o.mips_count)
+        || (base_layer != o.base_layer)
+        || (layers_count != o.layers_count); 
+    }
   };
 
   inline ImageViewRange make_image_range2D(uint32_t base_mip, uint32_t mip_count, uint32_t base_layer = 0, uint32_t layer_count = 1) {

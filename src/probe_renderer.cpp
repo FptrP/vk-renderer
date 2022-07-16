@@ -223,7 +223,7 @@ void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergrap
 
         uint32_t w = desc.width/(1 << i), h = desc.height/(1 << i);
 
-        cmd.set_framebuffer(w, h, {resources.get_view(input.depth_rt)});
+        cmd.set_framebuffer(w, h, {resources.get_image_range(input.depth_rt)});
         cmd.bind_pipeline(downsample_pass);
         cmd.bind_descriptors_graphics(0, {set});
         cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);

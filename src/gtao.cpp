@@ -184,7 +184,7 @@ void GTAO::add_main_rt_pass(
 
       const auto &extent = resources.get_image(input.rt)->get_extent();
 
-      cmd.set_framebuffer(extent.width, extent.height, {resources.get_view(input.rt)});
+      cmd.set_framebuffer(extent.width, extent.height, {resources.get_image_range(input.rt)});
       cmd.bind_pipeline(rt_main_pipeline);
       cmd.bind_viewport(0.f, 0.f, float(extent.width), float(extent.height), 0.f, 1.f);
       cmd.bind_scissors(0, 0, extent.width, extent.height);
@@ -401,7 +401,7 @@ void GTAO::add_main_pass_graphics(
       auto w = image_info.width;
       auto h = image_info.height;
 
-      cmd.set_framebuffer(w, h, {resources.get_view(input.rt)});
+      cmd.set_framebuffer(w, h, {resources.get_image_range(input.rt)});
       cmd.bind_pipeline(main_pipeline_gfx);
       cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);
       cmd.bind_scissors(0, 0, w, h);

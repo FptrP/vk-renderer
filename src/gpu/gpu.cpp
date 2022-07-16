@@ -72,16 +72,16 @@ namespace gpu {
     g_pipeline_pool->create_program(name, std::move(shaders));
   }
 
-  std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count) {
+  /*std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count) {
     auto &dev = app_device();
     auto api_buffers = pool.allocate(count);
     std::vector<CmdContext> cmd;
     cmd.reserve(count);
     for (auto elem : api_buffers) {
-      cmd.emplace_back(dev.api_device(), elem, dev.get_allocator(), dev.get_properties().limits.minUniformBufferOffsetAlignment);
+      cmd.emplace_back(elem, dev.get_properties().limits.minUniformBufferOffsetAlignment);
     }
     return cmd;
-  }
+  }*/
   
   DescriptorPool new_descriptor_pool(uint32_t flips_count) {
     return DescriptorPool {flips_count};

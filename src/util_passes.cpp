@@ -23,9 +23,8 @@ void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResou
     },
     [=](Data &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       const auto &image_desc = resources.get_image(data.rt)->get_extent();
-      auto rt_view = resources.get_view(data.rt);
 
-      cmd.set_framebuffer(image_desc.width, image_desc.height, {rt_view});
+      cmd.set_framebuffer(image_desc.width, image_desc.height, {resources.get_image_range(data.rt)});
       cmd.bind_pipeline(data.pipeline);
       cmd.bind_viewport(0.f, 0.f, float(image_desc.width), float(image_desc.height), 0.f, 1.f);
       cmd.bind_scissors(0, 0, image_desc.width, image_desc.height);

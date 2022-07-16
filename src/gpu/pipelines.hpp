@@ -17,13 +17,6 @@ namespace gpu {
   template <typename T> 
   struct HashFunc;
 
-  template <typename T>
-  inline void hash_combine(std::size_t &s, const T &v) {
-    std::hash<T> h;
-    s ^= h(v) + 0x9e3779b9 + (s<< 6) + (s>> 2); 
-  }
-
-
   struct RenderSubpassDesc {
     bool operator==(const RenderSubpassDesc &desc) const {
       return formats == desc.formats && use_depth == desc.use_depth;

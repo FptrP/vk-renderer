@@ -38,7 +38,7 @@ namespace gpu {
   void create_program(const std::string &name, std::initializer_list<std::string> shaders);
   void create_program(const std::string &name, std::vector<std::string> &&shaders);
 
-  std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
+  //std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
   
   //std::vector<Image> get_swapchain_images();
   std::vector<ImagePtr> get_swapchain_image_ptr();

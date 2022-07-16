@@ -11,10 +11,9 @@ namespace rendergraph {
     GpuState()
       : backbuffers_count { gpu::app_swapchain().get_images_count()},
         frames_count {backbuffers_count},
-        cmdbuffer_pool {},
         desc_pool {frames_count},
         event_pool {gpu::app_device().api_device(), frames_count},
-        cmd_buffers {gpu::allocate_cmd_contexts(cmdbuffer_pool, frames_count)}
+        ctx_pool {frames_count}
     {
       submit_fences.reserve(frames_count);
       image_acquire_semaphores.reserve(frames_count);
@@ -36,7 +35,7 @@ namespace rendergraph {
     void begin();
     void submit(bool present);
 
-    gpu::CmdContext &get_cmdbuff() { return cmd_buffers[frame_index]; }
+    gpu::CmdContext &get_cmdbuff() { return ctx_pool.get_ctx(); }
     
     uint32_t get_frame_index() const { return frame_index; }
     uint32_t get_backbuf_index() const { return backbuf_index; }
@@ -55,11 +54,12 @@ namespace rendergraph {
     uint32_t backbuffers_count = 0;
     uint32_t frames_count = 0;
 
-    gpu::CmdBufferPool cmdbuffer_pool;
+    //gpu::CmdBufferPool cmdbuffer_pool;
     gpu::DescriptorPool desc_pool;
     gpu::EventPool event_pool;
 
-    std::vector<gpu::CmdContext> cmd_buffers;
+    //std::vector<gpu::CmdContext> cmd_buffers;
+    gpu::CmdContextPool ctx_pool;
     std::vector<gpu::Fence> submit_fences;
     std::vector<gpu::Semaphore> image_acquire_semaphores;
     std::vector<gpu::Semaphore> submit_done_semaphores;  

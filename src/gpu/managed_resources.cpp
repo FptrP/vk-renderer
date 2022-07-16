@@ -405,4 +405,16 @@ namespace gpu {
     return g_res_manager.acquire_resource(id);
   }
 
+  void release_resource(const DriverResourceID &id) {
+    g_res_manager.release_resource(id);
+  }
+
+  ImagePtr acquire_image(DriverResourceID id) {
+    return ImagePtr {id};
+  }
+  
+  BufferPtr acquire_buffer(DriverResourceID id) {
+    return BufferPtr {id};
+  }
+
 }

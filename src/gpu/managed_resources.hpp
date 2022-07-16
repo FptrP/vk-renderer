@@ -18,6 +18,10 @@ namespace gpu {
       return index == id.index && gen == id.gen;
     }
 
+    constexpr bool operator!=(const DriverResourceID &id) const {
+      return index != id.index || gen != id.gen;
+    }
+
     DriverResourceID &operator=(const DriverResourceID &id) {
       index = id.index;
       gen = id.gen;
@@ -33,6 +37,7 @@ namespace gpu {
     uint32_t gen {UINT32_MAX};
 
     friend DriverResourceManager;
+    friend std::hash<DriverResourceID>;
   };
 
   constexpr DriverResourceID INVALID_ID {};
@@ -87,6 +92,8 @@ namespace gpu {
     void release();
     void reset(DriverResourceID &id);
 
+    DriverResourceID get_id() const { return id; }
+
   protected:
     DriverResourceID id;
     DriverResource *ptr {nullptr};
@@ -132,7 +139,7 @@ namespace gpu {
     
     VkImageAspectFlagBits get_default_aspect() const;
     VkImageAspectFlags get_full_aspect() const;
-    
+
     VkImageView get_view(ImageViewRange range);
     void destroy_views();
 
@@ -171,6 +178,20 @@ namespace gpu {
   ImagePtr create_driver_image(const VkImageCreateInfo &info);
 
   DriverResource *acquire_resource(DriverResourceID id);
+  void release_resource(const DriverResourceID &id);
+
+  ImagePtr acquire_image(DriverResourceID id);
+  BufferPtr acquire_buffer(DriverResourceID id);
+}
+
+namespace std {
+  template <>
+  struct hash<gpu::DriverResourceID> {
+    size_t operator()(const gpu::DriverResourceID &key) const {
+      size_t h = uint64_t(key.index) | (uint64_t(key.gen) << 31);
+      return h;  
+    }
+  };
 }
 
 #endif

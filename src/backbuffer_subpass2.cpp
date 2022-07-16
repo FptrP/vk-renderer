@@ -38,7 +38,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       VkRect2D scissors {{0, 0}, VkExtent2D {ext.width, ext.height}};
       VkViewport viewport {0.f, 0.f, (float)ext.width, (float)ext.height, 0.f, 1.f};
 
-      cmd.set_framebuffer(ext.width, ext.height, {resources.get_view(data.backbuff_view)});
+      cmd.set_framebuffer(ext.width, ext.height, {resources.get_image_range(data.backbuff_view)});
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});
@@ -79,7 +79,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::ImagePtr &imag
       VkRect2D scissors {{0, 0}, VkExtent2D {ext.width, ext.height}};
       VkViewport viewport {0.f, 0.f, (float)ext.width, (float)ext.height, 0.f, 1.f};
 
-      cmd.set_framebuffer(ext.width, ext.height, {resources.get_view(data.backbuff_view)});
+      cmd.set_framebuffer(ext.width, ext.height, {resources.get_image_range(data.backbuff_view)});
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});

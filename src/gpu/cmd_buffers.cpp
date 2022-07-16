@@ -77,10 +77,7 @@ namespace gpu {
   void CmdContext::end() {
     end_renderpass();
     
-    fb_state.attachments.clear();
-    fb_state.dirty = false;
-    fb_state.height = 0;
-    fb_state.width = 0;
+    fb_state.set_width(0);
 
     gfx_pipeline.reset();
     cmp_pipeline.reset();
@@ -93,43 +90,23 @@ namespace gpu {
     VKCHECK(vkEndCommandBuffer(cmd));
   }
 
-  void CmdContext::set_framebuffer(uint32_t width, uint32_t height, const std::initializer_list<VkImageView> &views) {
+  void CmdContext::set_framebuffer(uint32_t width, uint32_t height, const std::initializer_list<std::pair<DriverResourceID, ImageViewRange>> &attachments) {
     if (width == 0 || height == 0) {
       throw std::runtime_error {"Zero-sized framebuffer!"};
     }
     
-    if (fb_state.dirty || fb_state.attachments.size() == 0) {
-      fb_state.dirty = true;
-      fb_state.width = width;
-      fb_state.height = height;
-      fb_state.attachments.clear();
-      fb_state.attachments.insert(fb_state.attachments.begin(), views.begin(), views.end());
-      return;
+    fb_state.set_width(width);
+    fb_state.set_height(height);
+    fb_state.set_layers(1);
+
+    if (gfx_pipeline) {
+      fb_state.set_renderpass(*gfx_pipeline);
     }
 
-    bool changed = false;
-    changed = changed || (fb_state.width != width) || (fb_state.height != height);
-    changed = changed || (fb_state.attachments.size() != views.size());
-
-    auto ptr = views.begin();
-
-    if (!changed) {
-      for (uint32_t i = 0; i < views.size(); i++) {
-        changed |= fb_state.attachments[i] != ptr[i];
-        if (changed) {
-          break;
-        }
-      }
+    for (uint32_t i = 0; i < attachments.size(); i++) {
+      auto img = acquire_image(attachments.begin()[i].first);
+      fb_state.set_attachment(i, img, attachments.begin()[i].second);
     }
-
-    if (!changed) {
-      return;
-    }
-
-    fb_state.dirty = true;
-    fb_state.width = width;
-    fb_state.height = height;
-    fb_state.attachments.insert(fb_state.attachments.begin(), views.begin(), views.end());
   }
 
   void CmdContext::bind_pipeline(const GraphicsPipeline &pipeline) {
@@ -147,16 +124,14 @@ namespace gpu {
       throw std::runtime_error {"Attemp to bind incomplite pipeline"};
     }
 
-    if (!state.framebuffer && !fb_state.dirty) {
-      throw std::runtime_error {"Attempt to bind graphics pipeline without framebuffer"};
-    }
-
     gfx_pipeline = pipeline;
+    
+    fb_state.set_renderpass(*gfx_pipeline);
 
     auto renderpass = gfx_pipeline->get_renderpass();
     auto api_pipeline = gfx_pipeline->get_pipeline();
 
-    bool reset_renderpass = (renderpass != state.renderpass) || fb_state.dirty;
+    bool reset_renderpass = (renderpass != state.renderpass) || fb_state.is_dirty();
     bool change_pipeline = api_pipeline != state.gfx_pipeline;
     
     //recreate framebuffer
@@ -164,7 +139,7 @@ namespace gpu {
     if (reset_renderpass) {
       end_renderpass();
 
-      if (fb_state.dirty) {
+      if (fb_state.is_dirty()) {
         flush_framebuffer_state(renderpass);
       }
 
@@ -177,7 +152,7 @@ namespace gpu {
         .pNext = nullptr,
         .renderPass = renderpass,
         .framebuffer = state.framebuffer,
-        .renderArea = {{0, 0}, {fb_state.width, fb_state.height}},
+        .renderArea = {{0, 0}, {fb_state.get_width(), fb_state.get_height()}},
         .clearValueCount = 0,
         .pClearValues = nullptr
       };
@@ -233,39 +208,10 @@ namespace gpu {
   }
 
   void CmdContext::flush_framebuffer_state(VkRenderPass renderpass) {
-    if (!fb_state.dirty) {
-      return;
-    }
-    
-    if (state.framebuffer) {
-      delayed_free.push_back(new FramebufferResource{state.framebuffer});
-      state.framebuffer = nullptr;
-    }
-
-    VkFramebufferCreateInfo info {
-      .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-      .pNext = nullptr,
-      .flags = 0,
-      .renderPass = renderpass,
-      .attachmentCount = (uint32_t)fb_state.attachments.size(),
-      .pAttachments = fb_state.attachments.data(),
-      .width = fb_state.width,
-      .height = fb_state.height,
-      .layers = 1
-    };
-
-    VKCHECK(vkCreateFramebuffer(api_device, &info, nullptr, &state.framebuffer));
-
-    fb_state.dirty = false;
+    state.framebuffer = cmd_context.framebuffers.get_framebuffer(fb_state);
   }
 
   void CmdContext::end_renderpass() {
-    if (state.framebuffer) {
-      delayed_free.push_back(new FramebufferResource{state.framebuffer});
-      state.framebuffer = nullptr;
-      fb_state.dirty = true; //to reset framebuffer
-    }
-    
     if (state.renderpass) {
       vkCmdEndRenderPass(cmd);
       state.renderpass = nullptr;
@@ -309,15 +255,12 @@ namespace gpu {
   }
 
   void CmdContext::clear_resources() {
-    if (!api_device) { return; }
-
     if (state.framebuffer) {
-      delayed_free.push_back(new FramebufferResource{state.framebuffer});
       state.framebuffer = nullptr;
     }
 
     for (auto res : delayed_free) {
-      res->destroy(api_device);
+      res->destroy(internal::app_vk_device());
       delete res;
     }
     delayed_free.clear();
@@ -337,7 +280,7 @@ namespace gpu {
     };
 
     VkClearRect clear_rect {
-      .rect {{0, 0}, {fb_state.width, fb_state.height}},
+      .rect {{0, 0}, {fb_state.get_width(), fb_state.get_height()}},
       .baseArrayLayer = 0,
       .layerCount = 1
     };
@@ -364,7 +307,7 @@ namespace gpu {
     };
 
     VkClearRect clear_rect {
-      .rect {{0, 0}, {fb_state.width, fb_state.height}},
+      .rect {{0, 0}, {fb_state.get_width(), fb_state.get_height()}},
       .baseArrayLayer = 0,
       .layerCount = 1
     };
@@ -488,8 +431,8 @@ namespace gpu {
     return *this;
   }
 
-  CmdContext::CmdContext(CmdContext &&o) : 
-    api_device {o.api_device},
+  CmdContext::CmdContext(CmdContext &&o) :
+    cmd_context {o.cmd_context},
     cmd {o.cmd},
     gfx_pipeline {o.gfx_pipeline},
     cmp_pipeline {o.cmp_pipeline},
@@ -499,12 +442,10 @@ namespace gpu {
     delayed_free {std::move(o.delayed_free)}
   {
     o.state.framebuffer = nullptr;
-    o.api_device = nullptr;
     o.cmd = nullptr;
   }
 
   CmdContext &CmdContext::operator=(CmdContext &&o) {
-    std::swap(api_device, o.api_device);
     std::swap(cmd, o.cmd);
     std::swap(gfx_pipeline, o.gfx_pipeline);
     std::swap(cmp_pipeline, o.cmp_pipeline);

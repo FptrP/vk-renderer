@@ -61,6 +61,10 @@ namespace rendergraph {
     gpu::ImagePtr &get_image(ImageResourceId id);
     VkImageView get_view(const ImageViewId &ref);
 
+    std::pair<gpu::DriverResourceID, gpu::ImageViewRange> get_image_range(const ImageViewId &ref) const {
+      return {resources.get_driver_id(ref.get_id()), ref.get_range()};
+    }
+
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout, const std::vector<uint32_t> &sizes) { return gpu.allocate_set(layout, sizes); }
     VkDescriptorSet allocate_set(const gpu::GraphicsPipeline &p, uint32_t index) { return gpu.allocate_set(p.get_layout(index)); }

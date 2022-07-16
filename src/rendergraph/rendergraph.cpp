@@ -645,5 +645,4 @@ namespace rendergraph {
   VkImageView RenderResources::get_view(const ImageViewId &ref) {
     return get_image(ref.get_id())->get_view(ref.get_range());
   }
-
 }

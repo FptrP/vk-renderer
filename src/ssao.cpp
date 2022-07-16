@@ -86,7 +86,7 @@ void SSAOPass::draw(rendergraph::RenderGraph &graph, rendergraph::ImageResourceI
       auto w = image_info.width;
       auto h = image_info.height;
 
-      cmd.set_framebuffer(w, h, {resources.get_view(input.rt)});
+      cmd.set_framebuffer(w, h, {resources.get_image_range(input.rt)});
       cmd.bind_pipeline(pipeline);
       cmd.bind_viewport(0.f, 0.f, float(w), float(h), 0.f, 1.f);
       cmd.bind_scissors(0, 0, w, h);

@@ -12,6 +12,7 @@
 #include "gpu/pipelines.hpp"
 #include "gpu/dynbuffer.hpp"
 #include "descriptors.hpp"
+#include "framebuffers.hpp"
 
 namespace gpu {
 
@@ -127,15 +128,47 @@ namespace gpu {
 
   constexpr uint64_t UBO_POOL_SIZE = 16 * (1 << 10); //16Kb
 
+  struct CmdContextPool {
+    CmdContextPool(uint32_t num_frames)
+      : framebuffers {FRAMES_TO_COLLECT}
+    {
+      auto cmd_buffers = pool.allocate(num_frames);
+      ctx.reserve(num_frames);
+      for (uint32_t i = 0; i < num_frames; i++) {
+        ctx.emplace_back(*this, cmd_buffers[i], app_device().get_properties().limits.minUniformBufferOffsetAlignment);  
+      }
+    }
+
+    ~CmdContextPool() {}
+
+    void flip() {
+      framebuffers.flip();
+      ctx_index = (ctx_index + 1) % ctx.size();
+    }
+    
+    CmdContext &get_ctx() { return ctx[ctx_index]; } 
+
+  private:
+    CmdBufferPool pool;
+    FramebuffersCache framebuffers;
+
+    uint32_t ctx_index = 0;
+    std::vector<CmdContext> ctx;
+
+    static constexpr uint32_t FRAMES_TO_COLLECT = 10;
+    friend CmdContext;
+  };
+
   struct CmdContext {
-    CmdContext(VkDevice device, VkCommandBuffer cmd_buf, VmaAllocator alloc, uint64_t alignment)
-      : api_device {device}, cmd {cmd_buf}, ubo_pool {alignment, UBO_POOL_SIZE} {}
+    CmdContext(CmdContextPool &base, VkCommandBuffer cmd_buf, uint64_t alignment)
+      : cmd_context {base}, cmd {cmd_buf}, ubo_pool {alignment, UBO_POOL_SIZE} {}
     ~CmdContext() { clear_resources(); }
     
     void begin();
     void end();
 
-    void set_framebuffer(uint32_t width, uint32_t height, const std::initializer_list<VkImageView> &views);
+    void set_framebuffer(uint32_t width, uint32_t height, const std::initializer_list<std::pair<DriverResourceID, ImageViewRange>> &attachments);
+
     void bind_pipeline(const GraphicsPipeline &pipeline);
     void bind_pipeline(const ComputePipeline &pipeline);
     void end_renderpass();
@@ -188,7 +221,7 @@ namespace gpu {
     CmdContext &operator=(CmdContext &&) /*= default*/;
     //void draw_indexed
   private:
-    VkDevice api_device = nullptr;
+    CmdContextPool &cmd_context;
     VkCommandBuffer cmd = nullptr;
 
     std::optional<GraphicsPipeline> gfx_pipeline {};
@@ -203,12 +236,7 @@ namespace gpu {
       VkPipelineLayout cmp_layout = nullptr;
     } state {};
 
-    struct FramebufferState {
-      bool dirty = true;
-      uint32_t width;
-      uint32_t height;
-      std::vector<VkImageView> attachments;
-    } fb_state {};
+    FramebufferState fb_state;
 
     UniformBufferPool ubo_pool;
 

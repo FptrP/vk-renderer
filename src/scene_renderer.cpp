@@ -167,11 +167,11 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
     },
     [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
       cmd.set_framebuffer(gbuffer.w, gbuffer.h, {
-        resources.get_view(input.albedo),
-        resources.get_view(input.normal),
-        resources.get_view(input.material),
-        resources.get_view(input.velocity),
-        resources.get_view(input.depth)
+        resources.get_image_range(input.albedo),
+        resources.get_image_range(input.normal),
+        resources.get_image_range(input.material),
+        resources.get_image_range(input.velocity),
+        resources.get_image_range(input.depth)
       });
 
       auto vbuf = target.vertex_buffer->api_buffer();

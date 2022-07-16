@@ -13,7 +13,7 @@ namespace rendergraph {
 
   void GpuState::begin() {
 
-    auto &cmd = cmd_buffers[frame_index]; 
+    auto &cmd = ctx_pool.get_ctx(); 
     VkFence cmd_fence = submit_fences[frame_index];
 
     vkWaitForFences(gpu::app_device().api_device(), 1, &cmd_fence, VK_TRUE, UINT64_MAX);
@@ -28,7 +28,7 @@ namespace rendergraph {
   
   void GpuState::submit(bool present) {
     if (!present) {
-      auto &cmd = cmd_buffers[frame_index];
+      auto &cmd = ctx_pool.get_ctx();
       auto api_cmd = cmd.get_command_buffer();
       VkFence cmd_fence = submit_fences[frame_index];
       auto queue = gpu::app_device().api_queue();
@@ -49,11 +49,12 @@ namespace rendergraph {
 
       VKCHECK(vkQueueSubmit(queue, 1, &submit_info, cmd_fence));
       frame_index = (frame_index + 1) % frames_count;
+      ctx_pool.flip();
       return;
     }
 
 
-    auto &cmd = cmd_buffers[frame_index];
+    auto &cmd = ctx_pool.get_ctx();
     auto api_cmd = cmd.get_command_buffer();
     VkFence cmd_fence = submit_fences[frame_index];
     
@@ -98,7 +99,7 @@ namespace rendergraph {
 
     frame_index = (frame_index + 1) % frames_count;
     backbuf_sem_index = (backbuf_sem_index + 1) % backbuffers_count;
-
+    ctx_pool.flip();
     acquire_image();
   }
 

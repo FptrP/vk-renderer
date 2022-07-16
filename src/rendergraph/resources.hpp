@@ -214,6 +214,9 @@ namespace rendergraph {
     
     BufferTrackingState &get_resource_state(BufferResourceId id);
     ImageTrackingState &get_resource_state(ImageSubresourceId id);
+
+    gpu::DriverResourceID get_driver_id(BufferResourceId id) const { return global_buffers.at(id.index).vk_buffer.get_id(); }
+    gpu::DriverResourceID get_driver_id(ImageResourceId id) const { return global_images.at(id.index).vk_image.get_id(); }
   
   private:
     
