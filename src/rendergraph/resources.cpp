@@ -4,8 +4,18 @@
 
 namespace rendergraph {
   
+  static VkImageCreateFlags options_to_flags(gpu::ImageCreateOptions options) {
+    switch (options) {
+    case gpu::ImageCreateOptions::Array2D:
+      return VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+    case gpu::ImageCreateOptions::Cubemap:
+      return VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    default:
+      return 0;
+    }
+  }
+
   ImageResourceId GraphResources::create_global_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options) {
-    uint32_t remap_index = image_remap.size();
     uint32_t image_index = global_images.size();
     
     uint32_t count = desc.array_layers * desc.mip_levels;
@@ -17,20 +27,35 @@ namespace rendergraph {
       std::move(ptr)
     });
 
-    global_images.back().vk_image.create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage, options);
-    image_remap.emplace_back(image_index);
+    VkImageCreateInfo info {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = options_to_flags(options),
+      .imageType = desc.type,
+      .format = desc.format,
+      .extent = VkExtent3D{desc.width, desc.height, desc.depth},
+      .mipLevels = desc.mip_levels,
+      .arrayLayers = desc.array_layers,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = desc.tiling,
+      .usage = desc.usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 0,
+      .pQueueFamilyIndices = nullptr,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+    };
+
+    global_images.back().vk_image = gpu::create_driver_image(info); //create(desc.type, desc.get_vk_info(), desc.tiling, desc.usage, options);
     
     ImageResourceId id {};
-    id.index = remap_index;
+    id.index = image_index;
     return id;
   }
 
-  ImageResourceId GraphResources::create_global_image_ref(gpu::Image &image) {
-    uint32_t remap_index = image_remap.size();
+  ImageResourceId GraphResources::create_global_image_ref(const gpu::ImagePtr &image) {
     uint32_t image_index = global_images.size();
-    const auto &desc = image.get_info();
 
-    uint32_t count = desc.array_layers * desc.mip_levels;
+    uint32_t count = image->get_array_layers() * image->get_mip_levels();
     std::unique_ptr<ImageTrackingState[]> ptr;
     ptr.reset(new ImageTrackingState[count]);
 
@@ -39,11 +64,10 @@ namespace rendergraph {
       std::move(ptr)
     });
 
-    global_images.back().vk_image.create_reference(image.get_image(), desc);
-    image_remap.emplace_back(image_index);
+    global_images.back().vk_image = gpu::create_image_ref(image->api_image(), image->get_info());// create_reference(image.get_image(), desc);
     
     ImageResourceId id {};
-    id.index = remap_index;
+    id.index = image_index;
     return id;
   }
   
@@ -63,7 +87,7 @@ namespace rendergraph {
   }
   
   void GraphResources::remap(ImageResourceId src, ImageResourceId dst) {
-    std::swap(image_remap.at(src.index), image_remap.at(dst.index));
+    std::swap(global_images.at(src.index), global_images.at(dst.index));
   }
   
   void GraphResources::remap(BufferResourceId src, BufferResourceId dst) {
@@ -71,14 +95,16 @@ namespace rendergraph {
     std::swap(global_buffers.at(src.index), global_buffers.at(dst.index));
   }
 
-  const gpu::ImageInfo &GraphResources::get_info(ImageResourceId id) const {
-    auto index = image_remap.at(id.index);
-    return global_images.at(index).vk_image.get_info(); 
+  const VkImageCreateInfo &GraphResources::get_info(ImageResourceId id) const {
+    return global_images.at(id.index).vk_image->get_info(); 
   }
 
-  gpu::Image &GraphResources::get_image(ImageResourceId id) {
-    auto index = image_remap.at(id.index);
-    return global_images.at(index).vk_image;
+  gpu::ImagePtr &GraphResources::get_image(ImageResourceId id) {
+    return global_images.at(id.index).vk_image;
+  }
+
+  const gpu::ImagePtr &GraphResources::get_image(ImageResourceId id) const {
+    return global_images.at(id.index).vk_image;
   }
   
   gpu::BufferPtr &GraphResources::get_buffer(BufferResourceId id) {
@@ -92,11 +118,8 @@ namespace rendergraph {
   }
   
   const ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) const {
-    auto index = image_remap.at(id.id.index);
-
-    auto &img = global_images.at(index); 
-    auto mip_count = img.vk_image.get_mip_levels(); 
-
+    auto &img = global_images.at(id.id.index); 
+    auto mip_count = img.vk_image->get_mip_levels(); 
     return img.states[id.layer * mip_count + id.mip];
   }
     
@@ -106,10 +129,8 @@ namespace rendergraph {
   }
   
   ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) {
-    auto index = image_remap.at(id.id.index);
-
-    auto &img = global_images.at(index); 
-    auto mip_count = img.vk_image.get_mip_levels(); 
+    auto &img = global_images.at(id.id.index); 
+    auto mip_count = img.vk_image->get_mip_levels(); 
 
     return img.states[id.layer * mip_count + id.mip];
   }

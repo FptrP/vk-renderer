@@ -53,7 +53,7 @@ void TAA::run(rendergraph::RenderGraph &graph, const Gbuffer &gbuffer, rendergra
         gpu::UBOBinding {6, cmd.get_ubo_pool(), blk}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(pipeline);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset});

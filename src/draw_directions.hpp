@@ -34,7 +34,7 @@ struct DrawDirs {
           gpu::StorageTextureBinding {0, resources.get_view(input.id)}
         );
 
-        const auto &extent = resources.get_image(input.id).get_extent();
+        const auto &extent = resources.get_image(input.id)->get_extent();
 
         cmd.bind_pipeline(pipeline);
         cmd.bind_descriptors_compute(0, {set}, {});

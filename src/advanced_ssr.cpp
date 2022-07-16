@@ -106,7 +106,7 @@ void AdvancedSSR::preintegrate_pdf(rendergraph::RenderGraph &graph) {
       gpu::write_set(set, 
         gpu::StorageTextureBinding {0, resources.get_view(input.out_pdf)});
 
-      auto extent = resources.get_image(input.out_pdf).get_extent();
+      auto extent = resources.get_image(input.out_pdf)->get_extent();
       cmd.bind_pipeline(preintegrate_pass);
       cmd.bind_descriptors_compute(0, {set});
       cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
@@ -128,7 +128,7 @@ void AdvancedSSR::preintegrate_brdf(rendergraph::RenderGraph &graph) {
         gpu::UBOBinding {0, halton_buffer},
         gpu::StorageTextureBinding {1, resources.get_view(input.out_brdf)});
 
-      auto extent = resources.get_image(input.out_brdf).get_extent();
+      auto extent = resources.get_image(input.out_brdf)->get_extent();
       cmd.bind_pipeline(preintegrate_brdf_pass);
       cmd.bind_descriptors_compute(0, {set}, {0});
       cmd.dispatch((extent.width + 7)/8, (extent.height + 3)/4, 1);
@@ -205,7 +205,7 @@ void AdvancedSSR::run_trace_pass(
         gpu::StorageTextureBinding {6, resources.get_view(input.occlusion)},
         gpu::TextureBinding {7, resources.get_view(input.preintegrated_pdf), sampler});
       
-      auto ext = resources.get_image(input.out).get_extent();
+      auto ext = resources.get_image(input.out)->get_extent();
       cmd.bind_pipeline(trace_pass);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset, 0});
       cmd.push_constants_compute(0, sizeof(push_consts), &push_consts);
@@ -360,7 +360,7 @@ void AdvancedSSR::run_filter_pass(
         gpu::StorageTextureBinding {5, resources.get_view(input.reflection)},
         gpu::UBOBinding {6, cmd.get_ubo_pool(), blk});
       
-      auto ext = resources.get_image(input.reflection).get_extent();
+      auto ext = resources.get_image(input.reflection)->get_extent();
       cmd.bind_pipeline(filter_pass);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset});
       cmd.push_constants_compute(0, sizeof(pc), &pc);
@@ -429,7 +429,7 @@ void AdvancedSSR::run_blur_pass(
         gpu::UBOBinding {8, cmd.get_ubo_pool(), blk}
       );
       
-      auto ext = resources.get_image(input.result).get_extent();
+      auto ext = resources.get_image(input.result)->get_extent();
       cmd.bind_pipeline(blur_pass);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset});
       cmd.push_constants_compute(0, sizeof(pc), &pc);

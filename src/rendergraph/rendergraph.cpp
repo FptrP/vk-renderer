@@ -73,17 +73,17 @@ namespace rendergraph {
       VK_IMAGE_LAYOUT_GENERAL
     };
 
-    for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
+    for (uint32_t layer = 0; layer < desc.arrayLayers; layer++) {
       ImageSubresourceId subres {id, 0, layer};
       tracking_state.add_input(resources, subres, state);
     }
     
-    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, 1, 0, desc.array_layers}};
+    return ImageViewId {id, gpu::ImageViewRange {VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, 1, 0, desc.arrayLayers}};
   }
 
   ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect) {
     const auto &desc = resources.get_info(id);
-    return sample_image(id, stages, aspect, 0, desc.mip_levels, 0, desc.array_layers);
+    return sample_image(id, stages, aspect, 0, desc.mipLevels, 0, desc.arrayLayers);
   }
 
   ImageViewId RenderGraphBuilder::sample_image(ImageResourceId id, VkShaderStageFlags stages, VkImageAspectFlags aspect, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
@@ -115,14 +115,14 @@ namespace rendergraph {
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     };
 
-    for (uint32_t layer = 0; layer < desc.array_layers; layer++) {
-      for (uint32_t mip = 0; mip < desc.mip_levels; mip++) {
+    for (uint32_t layer = 0; layer < desc.arrayLayers; layer++) {
+      for (uint32_t mip = 0; mip < desc.mipLevels; mip++) {
         ImageSubresourceId subres {id, mip, layer};
         tracking_state.add_input(resources, subres, state);
       }
     }
 
-    return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_CUBE, aspect, 0, desc.mip_levels, 0, desc.array_layers}};
+    return ImageViewId {id, {VK_IMAGE_VIEW_TYPE_CUBE, aspect, 0, desc.mipLevels, 0, desc.arrayLayers}};
   }
 
   void RenderGraphBuilder::transfer_read(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count) {
@@ -212,10 +212,40 @@ namespace rendergraph {
   }
 
   
-  const gpu::ImageInfo &RenderGraphBuilder::get_image_info(ImageResourceId id) {
-    return resources.get_info(id);
+  gpu::ImageInfo RenderGraphBuilder::get_image_info(ImageResourceId id) {
+    auto info = resources.get_info(id);
+    gpu::ImageInfo res {};
+    
+    res.width = info.extent.width;
+    res.height = info.extent.height;
+    res.depth = info.extent.depth;
+    
+    res.mip_levels = info.mipLevels;
+    res.array_layers = info.arrayLayers;
+    
+    res.format = info.format;
+    
+    res.aspect = resources.get_image(id)->get_default_aspect();
+    return res;
   }
   
+  gpu::ImageInfo RenderGraph::get_descriptor(ImageResourceId id) const {
+    auto info = resources.get_info(id);
+    gpu::ImageInfo res {};
+    
+    res.width = info.extent.width;
+    res.height = info.extent.height;
+    res.depth = info.extent.depth;
+    
+    res.mip_levels = info.mipLevels;
+    res.array_layers = info.arrayLayers;
+    
+    res.format = info.format;
+    
+    res.aspect = resources.get_image(id)->get_default_aspect();
+    return res;
+  }
+
   RenderGraph::RenderGraph(gpu::Device &device, gpu::Swapchain &swapchain)
     : gpu {},
       resources {}
@@ -334,9 +364,9 @@ namespace rendergraph {
     return backbuffers[0];
   }
 
-  const gpu::ImageInfo &RenderGraph::get_descriptor(ImageResourceId id) const {
+  /*const gpu::ImageInfo &RenderGraph::get_descriptor(ImageResourceId id) const {
     return resources.get_info(id);
-  }
+  }*/
 
   void RenderGraph::remap(ImageResourceId src, ImageResourceId dst) {
     resources.remap(src, dst);
@@ -357,7 +387,7 @@ namespace rendergraph {
       auto &image = resources.get_image(state.id.id);
       const auto &desc = resources.get_info(state.id.id);
       
-      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
+      if (state.id.mip >= desc.mipLevels || state.id.layer >= desc.arrayLayers) {
         throw std::runtime_error {"Image subresource out of range"};
       }
       
@@ -373,8 +403,8 @@ namespace rendergraph {
         state.dst.layout,
         VK_QUEUE_FAMILY_IGNORED,
         VK_QUEUE_FAMILY_IGNORED,
-        image.get_image(),
-        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
+        image->api_image(),
+        {image->get_full_aspect(), state.id.mip, 1, state.id.layer, 1}
       };
       image_barriers.push_back(img_barrier);
     }
@@ -424,7 +454,7 @@ namespace rendergraph {
       auto &image = resources.get_image(state.id.id);
       const auto &desc = resources.get_info(state.id.id);
       
-      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
+      if (state.id.mip >= desc.mipLevels || state.id.layer >= desc.arrayLayers) {
         throw std::runtime_error {"Image subresource out of range"};
       }
       
@@ -440,8 +470,8 @@ namespace rendergraph {
         state.dst.layout,
         VK_QUEUE_FAMILY_IGNORED,
         VK_QUEUE_FAMILY_IGNORED,
-        image.get_image(),
-        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
+        image->api_image(),
+        {image->get_full_aspect(), state.id.mip, 1, state.id.layer, 1}
       };
       
       image_barriers.push_back(img_barrier);
@@ -518,7 +548,7 @@ namespace rendergraph {
       auto &image = resources.get_image(state.id.id);
       const auto &desc = resources.get_info(state.id.id);
       
-      if (state.id.mip >= desc.mip_levels || state.id.layer >= desc.array_layers) {
+      if (state.id.mip >= desc.mipLevels || state.id.layer >= desc.arrayLayers) {
         throw std::runtime_error {"Image subresource out of range"};
       }
       
@@ -534,8 +564,8 @@ namespace rendergraph {
         state.dst.layout,
         VK_QUEUE_FAMILY_IGNORED,
         VK_QUEUE_FAMILY_IGNORED,
-        image.get_image(),
-        {desc.aspect, state.id.mip, 1, state.id.layer, 1}
+        image->api_image(),
+        {image->get_full_aspect(), state.id.mip, 1, state.id.layer, 1}
       };
       
       image_barriers.push_back(img_barrier);
@@ -608,12 +638,12 @@ namespace rendergraph {
     return resources.get_buffer(id);
   }
   
-  gpu::Image &RenderResources::get_image(ImageResourceId id) {
+  gpu::ImagePtr &RenderResources::get_image(ImageResourceId id) {
     return resources.get_image(id);
   }
   
   VkImageView RenderResources::get_view(const ImageViewId &ref) {
-    return get_image(ref.get_id()).get_view(ref.get_range());
+    return get_image(ref.get_id())->get_view(ref.get_range());
   }
 
 }

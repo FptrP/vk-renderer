@@ -92,7 +92,7 @@ ReadBackID ReadBackSystem::read_image(rendergraph::RenderGraph &graph, rendergra
     },
     [=](TaskData &, rendergraph::RenderResources &resources, gpu::CmdContext &ctx) {
       auto api_cmd = ctx.get_command_buffer();
-      auto api_image = resources.get_image(image).get_image();
+      auto api_image = resources.get_image(image)->api_image();
       
       VkBufferImageCopy region {
         .bufferOffset = 0,

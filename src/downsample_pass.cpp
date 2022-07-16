@@ -30,9 +30,9 @@ void DownsamplePass::run_downsample_gbuff(
   rendergraph::ImageResourceId out_normal,
   rendergraph::ImageResourceId out_velocity)
 {
-  auto &depth_desc = graph.get_descriptor(depth);
-  auto &norm_desc = graph.get_descriptor(out_normal);
-  auto &vel_desc = graph.get_descriptor(out_velocity);
+  auto depth_desc = graph.get_descriptor(depth);
+  auto norm_desc = graph.get_descriptor(out_normal);
+  auto vel_desc = graph.get_descriptor(out_velocity);
 
   if (depth_desc.mip_levels < 2) {
     throw std::runtime_error {"Can't downsample depth texture with 1 mip level"};
@@ -96,7 +96,7 @@ void DownsamplePass::run_downsample_depth(
   rendergraph::ImageResourceId depth,
   uint32_t src_mip) //mip that will be readed from
 {
-  auto &desc = graph.get_descriptor(depth);
+  auto desc = graph.get_descriptor(depth);
   downsample_depth.set_rendersubpass({true, {desc.format}});
 
   struct Input {

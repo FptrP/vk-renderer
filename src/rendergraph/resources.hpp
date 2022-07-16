@@ -196,16 +196,18 @@ namespace rendergraph {
     GraphResources() {}
     
     ImageResourceId create_global_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options = gpu::ImageCreateOptions::None);
-    ImageResourceId create_global_image_ref(gpu::Image &image);
+    ImageResourceId create_global_image_ref(const gpu::ImagePtr &image);
 
     BufferResourceId create_global_buffer(const BufferDescriptor &desc);
 
     void remap(ImageResourceId src, ImageResourceId dst);
     void remap(BufferResourceId src, BufferResourceId dst);
 
-    const gpu::ImageInfo &get_info(ImageResourceId id) const;
-    gpu::Image &get_image(ImageResourceId id);
+    const VkImageCreateInfo &get_info(ImageResourceId id) const;
+    gpu::ImagePtr &get_image(ImageResourceId id);
     gpu::BufferPtr &get_buffer(BufferResourceId id);
+
+    const gpu::ImagePtr &get_image(ImageResourceId id) const;
 
     const BufferTrackingState &get_resource_state(BufferResourceId id) const;
     const ImageTrackingState &get_resource_state(ImageSubresourceId id) const;
@@ -216,7 +218,7 @@ namespace rendergraph {
   private:
     
     struct GlobalImage {
-      gpu::Image vk_image;
+      gpu::ImagePtr vk_image;
       std::unique_ptr<ImageTrackingState[]> states;
     };
     
@@ -225,7 +227,6 @@ namespace rendergraph {
       BufferTrackingState state;
     };
 
-    std::vector<uint32_t> image_remap;
     std::vector<GlobalImage> global_images;
     std::vector<GlobalBuffer> global_buffers;
   };

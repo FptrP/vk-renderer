@@ -59,7 +59,7 @@ void add_ssr_pass(
         gpu::UBOBinding {3, cmd.get_ubo_pool(), block},
         gpu::TextureBinding {4, resources.get_view(input.material), sampler});
 
-      const auto &image_info = resources.get_image(input.rt).get_info();
+      const auto &image_info = resources.get_image(input.rt)->get_extent();
       auto w = image_info.width;
       auto h = image_info.height;
 

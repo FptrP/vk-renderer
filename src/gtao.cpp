@@ -137,7 +137,7 @@ void GTAO::add_main_pass(
         gpu::StorageTextureBinding {5, resources.get_view(input.out)}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(main_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
@@ -182,7 +182,7 @@ void GTAO::add_main_rt_pass(
         gpu::UBOBinding {4, random_vectors}
       );
 
-      const auto &extent = resources.get_image(input.rt).get_extent();
+      const auto &extent = resources.get_image(input.rt)->get_extent();
 
       cmd.set_framebuffer(extent.width, extent.height, {resources.get_view(input.rt)});
       cmd.bind_pipeline(rt_main_pipeline);
@@ -229,7 +229,7 @@ void GTAO::add_filter_pass(
         gpu::StorageTextureBinding {2, resources.get_view(input.out)}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(filter_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});
@@ -275,7 +275,7 @@ void GTAO::add_reprojection_pass(
         gpu::StorageTextureBinding {5, resources.get_view(input.out)}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(reproject_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
@@ -337,7 +337,7 @@ void GTAO::add_accumulate_pass(
         gpu::UBOBinding {6, cmd.get_ubo_pool(), blk}
       );
 
-      const auto &extent = resources.get_image(input.accumulated_ao).get_extent();
+      const auto &extent = resources.get_image(input.accumulated_ao)->get_extent();
 
       cmd.bind_pipeline(accumulate_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {blk.offset});
@@ -397,7 +397,7 @@ void GTAO::add_main_pass_graphics(
         gpu::write_set(set, 
           gpu::StorageTextureBinding {7, resources.get_view(input.samples_map)});
       #endif
-      const auto &image_info = resources.get_image(input.rt).get_info();
+      const auto &image_info = resources.get_image(input.rt)->get_extent();
       auto w = image_info.width;
       auto h = image_info.height;
 
@@ -462,7 +462,7 @@ void GTAO::deinterleave_depth(rendergraph::RenderGraph &graph, rendergraph::Imag
         gpu::StorageTextureBinding {1, resources.get_view(input.out)}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(deinterleave_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});
@@ -513,11 +513,11 @@ void GTAO::add_main_pass_deinterleaved(
         gpu::StorageTextureBinding {3, resources.get_view(input.out)}
       );
       const auto &info = resources.get_image(input.out);
-      const auto &extent = info.get_extent();
+      const auto &extent = info->get_extent();
 
       cmd.bind_pipeline(main_deinterleaved_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
-      for (uint32_t i = 0; i < info.get_array_layers(); i++) {
+      for (uint32_t i = 0; i < info->get_array_layers(); i++) {
         PushConstants pc {deinterleave_n, i, base_angle};
         cmd.push_constants_compute(0, sizeof(pc), &pc);
         cmd.dispatch(extent.width/8, extent.height/4, 1);

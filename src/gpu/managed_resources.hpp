@@ -129,7 +129,10 @@ namespace gpu {
     uint32_t get_mip_levels() const { return desc.mipLevels; }
     uint32_t get_array_layers() const { return desc.arrayLayers; }
     const VkImageCreateInfo &get_info() const { return desc; }
-  
+    
+    VkImageAspectFlagBits get_default_aspect() const;
+    VkImageAspectFlags get_full_aspect() const;
+    
     VkImageView get_view(ImageViewRange range);
     void destroy_views();
 

@@ -15,6 +15,6 @@ enum class DrawTex {
 
 
 void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId draw_img, VkSampler sampler, DrawTex flags = DrawTex::ShowAll);
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler, DrawTex flags = DrawTex::ShowAll);
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::ImagePtr &image, VkSampler sampler, DrawTex flags = DrawTex::ShowAll);
 void add_present_subpass(rendergraph::RenderGraph &graph);
 #endif

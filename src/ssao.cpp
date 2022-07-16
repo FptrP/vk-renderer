@@ -82,7 +82,7 @@ void SSAOPass::draw(rendergraph::RenderGraph &graph, rendergraph::ImageResourceI
         gpu::TextureBinding {0, resources.get_view(input.depth), sampler},
         gpu::UBOBinding {1, cmd.get_ubo_pool(), block});
       
-      const auto &image_info = resources.get_image(input.rt).get_info();
+      const auto &image_info = resources.get_image(input.rt)->get_extent();
       auto w = image_info.width;
       auto h = image_info.height;
 

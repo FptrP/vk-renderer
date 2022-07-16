@@ -22,7 +22,7 @@ void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResou
       data.pipeline.set_rendersubpass({false, {fmt}});
     },
     [=](Data &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      const auto &image_desc = resources.get_image(data.rt).get_info();
+      const auto &image_desc = resources.get_image(data.rt)->get_extent();
       auto rt_view = resources.get_view(data.rt);
 
       cmd.set_framebuffer(image_desc.width, image_desc.height, {rt_view});
@@ -39,7 +39,7 @@ void gen_perlin_noise2D(rendergraph::RenderGraph &graph, rendergraph::ImageResou
 void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId image) {
   struct Data {};
 
-  auto &desc = graph.get_descriptor(image); 
+  auto desc = graph.get_descriptor(image); 
 
   for (uint32_t dst_mip = 1; dst_mip < desc.mip_levels; dst_mip++) {
     uint32_t src_mip = dst_mip - 1;
@@ -50,11 +50,13 @@ void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
         builder.transfer_write(image, dst_mip, 1, 0, 1);
       },
       [=](Data &, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-        const auto &desc = resources.get_image(image).get_info(); 
-        auto api_image = resources.get_image(image).get_image();
+        auto img_ptr = resources.get_image(image);
+        const auto &ext = img_ptr->get_extent(); 
+        auto api_image = img_ptr->api_image();
+        auto aspect = img_ptr->get_default_aspect();
 
-        int32_t src_width = desc.width/(1 << src_mip);
-        int32_t src_height = desc.height/(1 << src_mip);
+        int32_t src_width = ext.width/(1 << src_mip);
+        int32_t src_height = ext.height/(1 << src_mip);
         
         VkImageBlit region {};
         region.srcOffsets[0] = VkOffset3D {0, 0, 0};
@@ -62,14 +64,14 @@ void gen_mipmaps(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
         region.dstOffsets[0] = VkOffset3D {0, 0, 0};
         region.dstOffsets[1] = VkOffset3D {src_width/2, src_height/2, 1};
         region.srcSubresource = VkImageSubresourceLayers {
-          .aspectMask = desc.aspect,
+          .aspectMask = uint32_t(aspect),
           .mipLevel = src_mip,
           .baseArrayLayer = 0,
           .layerCount = 1
         };
 
         region.dstSubresource = VkImageSubresourceLayers {
-          .aspectMask = desc.aspect,
+          .aspectMask = uint32_t(aspect),
           .mipLevel = dst_mip,
           .baseArrayLayer = 0,
           .layerCount = 1
@@ -110,7 +112,7 @@ void clear_depth(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
 
       vkCmdClearDepthStencilImage(
         cmd.get_command_buffer(),
-        resources.get_image(image).get_image(),
+        resources.get_image(image)->api_image(),
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         &clear_val,
         1,
@@ -140,7 +142,7 @@ void clear_color(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId i
 
       vkCmdClearColorImage(
         cmd.get_command_buffer(),
-        resources.get_image(image).get_image(),
+        resources.get_image(image)->api_image(),
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         &val,
         1,
@@ -156,20 +158,20 @@ void blit_image(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId sr
       builder.transfer_write(dst, 0, 1, 0, 1);
     },
     [=](Input &, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      auto &src_info = resources.get_image(src).get_info();
-      auto &dst_info = resources.get_image(dst).get_info();
+      auto src_ext = resources.get_image(src)->get_extent();
+      auto dst_ext = resources.get_image(dst)->get_extent();
       VkImageBlit region {
         .srcSubresource {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .srcOffsets {{0, 0, 0}, {(int32_t)src_info.extent2D().width, (int32_t)src_info.extent2D().height, 1}},
+        .srcOffsets {{0, 0, 0}, {(int32_t)src_ext.width, (int32_t)src_ext.height, 1}},
         .dstSubresource {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .dstOffsets {{0, 0, 0}, {(int32_t)dst_info.extent2D().width, (int32_t)dst_info.extent2D().height, 1}}
+        .dstOffsets {{0, 0, 0}, {(int32_t)dst_ext.width, (int32_t)dst_ext.height, 1}}
       };
 
       vkCmdBlitImage(
         cmd.get_command_buffer(),
-        resources.get_image(src).get_image(),
+        resources.get_image(src)->api_image(),
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        resources.get_image(dst).get_image(),
+        resources.get_image(dst)->api_image(),
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, 
         &region,

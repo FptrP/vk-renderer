@@ -41,7 +41,7 @@ namespace rendergraph {
     uint32_t get_frame_index() const { return frame_index; }
     uint32_t get_backbuf_index() const { return backbuf_index; }
 
-    std::vector<gpu::Image> take_backbuffers() { return gpu::get_swapchain_images(); }
+    std::vector<gpu::ImagePtr> take_backbuffers() { return gpu::get_swapchain_image_ptr(); }
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return desc_pool.allocate_set(layout); }
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout, const std::vector<uint32_t> &variable_sizes) { return desc_pool.allocate_set(layout, variable_sizes); }

@@ -99,7 +99,7 @@ namespace gpu {
     return Fence {signaled};
   }
 
-  std::vector<Image> get_swapchain_images() {
+  /*std::vector<Image> get_swapchain_images() {
     auto &ctx_dev = app_device();
     auto &ctx_swapchain = app_swapchain();
     auto images_count = get_swapchain_image_count();
@@ -115,7 +115,7 @@ namespace gpu {
       images.back().create_reference(handle, ctx_swapchain.get_image_info());
     }
     return images;
-  }
+  }*/
 
   std::vector<ImagePtr> get_swapchain_image_ptr() {
     auto &ctx_dev = app_device();

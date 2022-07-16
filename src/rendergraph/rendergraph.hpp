@@ -38,7 +38,7 @@ namespace rendergraph {
     void transfer_write(ImageResourceId id, uint32_t base_mip, uint32_t mip_count, uint32_t base_layer, uint32_t layer_count);
     void transfer_write(BufferResourceId id);
 
-    const gpu::ImageInfo &get_image_info(ImageResourceId id);
+    gpu::ImageInfo get_image_info(ImageResourceId id);
 
     uint32_t get_frames_count() const { return gpu.get_frames_count(); }
     uint32_t get_backbuffers_count() const { return gpu.get_backbuffers_count();}
@@ -58,7 +58,7 @@ namespace rendergraph {
     RenderResources(GraphResources &res, GpuState &state) : resources {res}, gpu {state} {}
 
     gpu::BufferPtr &get_buffer(BufferResourceId id);
-    gpu::Image &get_image(ImageResourceId id);
+    gpu::ImagePtr &get_image(ImageResourceId id);
     VkImageView get_view(const ImageViewId &ref);
 
     VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) { return gpu.allocate_set(layout); }
@@ -132,7 +132,7 @@ namespace rendergraph {
     ImageResourceId create_image(const ImageDescriptor &desc, gpu::ImageCreateOptions options = gpu::ImageCreateOptions::None);
     BufferResourceId create_buffer(VmaMemoryUsage mem, uint64_t size, VkBufferUsageFlags usage);
 
-    const gpu::ImageInfo &get_descriptor(ImageResourceId id) const;
+    gpu::ImageInfo get_descriptor(ImageResourceId id) const;
     ImageResourceId get_backbuffer() const;
 
     void remap(ImageResourceId src, ImageResourceId dst);

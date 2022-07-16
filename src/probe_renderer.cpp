@@ -184,7 +184,7 @@ void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, rendergra
       input.oct_depth = builder.use_storage_image(probe_depth, VK_SHADER_STAGE_COMPUTE_BIT, 0, array_layer);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
-      const auto &desc = resources.get_image(input.oct_color).get_info();
+      const auto &desc = resources.get_image(input.oct_color)->get_extent();
 
       auto set = resources.allocate_set(octprobe_pass, 0);
       
@@ -203,7 +203,7 @@ void ProbeRenderer::render_octahedral(rendergraph::RenderGraph &graph, rendergra
 }
 
 void ProbeRenderer::probe_downsample(rendergraph::RenderGraph &graph, rendergraph::ImageResourceId probe_depth, uint32_t array_layer) {
-  auto &desc = graph.get_descriptor(probe_depth);
+  auto desc = graph.get_descriptor(probe_depth);
 
   struct Input {
     rendergraph::ImageViewId depth_tex;
@@ -360,7 +360,7 @@ void ProbeTracePass::run(
       input.out_tex = builder.use_storage_image(out_image, VK_SHADER_STAGE_COMPUTE_BIT, 0, 0);
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
-      const auto &desc = resources.get_image(input.out_tex).get_info();
+      const auto desc = resources.get_image(input.out_tex)->get_extent();
       auto blk = cmd.allocate_ubo<Constants>();
       *blk.ptr = consts;
 

@@ -101,7 +101,7 @@ void DeferedShadingPass::draw(rendergraph::RenderGraph &graph,
         gpu::TextureBinding {7, resources.get_view(input.brdf), sampler},
         gpu::TextureBinding {8, resources.get_view(input.ssr), sampler});
       
-      const auto &image_info = resources.get_image(input.rt).get_info();
+      const auto &image_info = resources.get_image(input.rt)->get_extent();
       auto w = image_info.width;
       auto h = image_info.height;
 

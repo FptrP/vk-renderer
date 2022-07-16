@@ -24,21 +24,21 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       data.backbuff_view = builder.use_backbuffer_attachment();
       data.texture_view = builder.sample_image(draw_img, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 0, 1, 0, 1);
 
-      auto &desc = builder.get_image_info(data.backbuff_view);
+      auto desc = builder.get_image_info(data.backbuff_view);
       pipeline.set_rendersubpass({false, {desc.format}});
     },
     [=](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      const auto &desc = resources.get_image(data.backbuff_view).get_info();
+      const auto &ext = resources.get_image(data.backbuff_view)->get_extent();
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
 
       gpu::write_set(set,
         gpu::TextureBinding {0, resources.get_view(data.texture_view), sampler});
 
-      VkRect2D scissors {{0, 0}, desc.extent2D()};
-      VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};
+      VkRect2D scissors {{0, 0}, VkExtent2D {ext.width, ext.height}};
+      VkViewport viewport {0.f, 0.f, (float)ext.width, (float)ext.height, 0.f, 1.f};
 
-      cmd.set_framebuffer(desc.width, desc.height, {resources.get_view(data.backbuff_view)});
+      cmd.set_framebuffer(ext.width, ext.height, {resources.get_view(data.backbuff_view)});
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});
@@ -51,7 +51,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
     });
 }
 
-void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, VkSampler sampler, DrawTex flags) {
+void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::ImagePtr &image, VkSampler sampler, DrawTex flags) {
   pipeline = gpu::create_graphics_pipeline();
   pipeline.set_program("texdraw");
   pipeline.set_registers({});
@@ -64,22 +64,22 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
   graph.add_task<SubpassData>("BackbufSubpass",
     [&](SubpassData &data, rendergraph::RenderGraphBuilder &builder){
       data.backbuff_view = builder.use_backbuffer_attachment();
-      auto &desc = builder.get_image_info(data.backbuff_view);
+      auto desc = builder.get_image_info(data.backbuff_view);
       pipeline.set_rendersubpass({false, {desc.format}});
     },
-    [=, &image](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
-      const auto &desc = resources.get_image(data.backbuff_view).get_info();
+    [=](SubpassData &data, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) mutable {
+      const auto &ext = resources.get_image(data.backbuff_view)->get_extent();
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
       auto range = gpu::make_image_range2D(0, ~0u);
 
       gpu::write_set(set,
-        gpu::TextureBinding {0, image.get_view(range), sampler});
+        gpu::TextureBinding {0, image->get_view(range), sampler});
 
-      VkRect2D scissors {{0, 0}, desc.extent2D()};
-      VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};
+      VkRect2D scissors {{0, 0}, VkExtent2D {ext.width, ext.height}};
+      VkViewport viewport {0.f, 0.f, (float)ext.width, (float)ext.height, 0.f, 1.f};
 
-      cmd.set_framebuffer(desc.width, desc.height, {resources.get_view(data.backbuff_view)});
+      cmd.set_framebuffer(ext.width, ext.height, {resources.get_view(data.backbuff_view)});
       cmd.bind_pipeline(pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);
       cmd.bind_descriptors_graphics(0, {set}, {});

@@ -82,7 +82,7 @@ void ScreenSpaceTrace::add_main_pass(
         gpu::UBOBinding {5, cmd.get_ubo_pool(), block}
       );
 
-      const auto &extent = resources.get_image(input.out).get_extent();
+      const auto &extent = resources.get_image(input.out)->get_extent();
 
       cmd.bind_pipeline(trace_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {block.offset});
@@ -123,7 +123,7 @@ void ScreenSpaceTrace::add_filter_pass(
         gpu::StorageTextureBinding {2, resources.get_view(input.filtered)}
       );
 
-      const auto &extent = resources.get_image(input.filtered).get_extent();
+      const auto &extent = resources.get_image(input.filtered)->get_extent();
 
       cmd.bind_pipeline(filter_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});
@@ -171,7 +171,7 @@ void ScreenSpaceTrace::add_accumulate_pass(
         gpu::StorageTextureBinding {3, resources.get_view(input.accum)}
       );
 
-      const auto &extent = resources.get_image(input.accum).get_extent();
+      const auto &extent = resources.get_image(input.accum)->get_extent();
 
       cmd.bind_pipeline(accum_pipeline);
       cmd.bind_descriptors_compute(0, {set}, {});

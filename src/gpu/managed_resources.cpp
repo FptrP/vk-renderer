@@ -226,13 +226,24 @@ namespace gpu {
       vmaDestroyImage(app_device().get_allocator(), handle, allocation);
   }
 
+  VkImageAspectFlagBits DriverImage::get_default_aspect() const {
+    return gpu::get_default_aspect(desc.format);
+  }
+  
+  VkImageAspectFlags DriverImage::get_full_aspect() const { //todo fix
+    VkImageAspectFlags aspect = get_default_aspect();
+    if (aspect != VK_IMAGE_ASPECT_COLOR_BIT)
+      aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    return aspect;
+  }
+
   VkImageView DriverImage::get_view(ImageViewRange range) {
     std::lock_guard lock {views_lock};
 
     auto device = app_device().api_device();
 
     if (!range.aspect) {
-      range.aspect = get_default_aspect(desc.format);
+      range.aspect = get_default_aspect();
     }
 
     auto iter = views.find(range);

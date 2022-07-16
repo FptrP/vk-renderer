@@ -40,7 +40,7 @@ namespace gpu {
 
   std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
   
-  std::vector<Image> get_swapchain_images();
+  //std::vector<Image> get_swapchain_images();
   std::vector<ImagePtr> get_swapchain_image_ptr();
   
   uint32_t get_swapchain_image_count();
