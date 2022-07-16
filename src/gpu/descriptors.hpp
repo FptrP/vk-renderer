@@ -4,6 +4,7 @@
 #include "resources.hpp"
 #include "dynbuffer.hpp"
 #include "pipelines.hpp"
+#include "managed_resources.hpp"
 
 #include <bitset>
 
@@ -27,34 +28,7 @@ namespace gpu {
     friend inline void internal::write_set_base(VkDevice api_device, VkDescriptorSet set, VkWriteDescriptorSet *ptr, const BaseBinding &b0);
   };
 
-  
-  struct DynBufBinding : BaseBinding {
-    template <typename T>
-    DynBufBinding(uint32_t binding, const DynBuffer<T> &buf) 
-      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
-    {
-      info.buffer = buf.api_buffer();
-      info.offset = 0;
-      info.range = sizeof(T);
-
-      desc_write.pBufferInfo = &info;
-    }
-
-  private:
-    VkDescriptorBufferInfo info {};
-  };
-
   struct UBOBinding : BaseBinding {
-    UBOBinding(uint32_t binding, const gpu::Buffer &buf) 
-      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
-    {
-      info.buffer = buf.get_api_buffer();
-      info.offset = 0;
-      info.range = buf.get_size();
-
-      desc_write.pBufferInfo = &info;
-    }
-
     template<typename T>
     UBOBinding(uint32_t binding, const UniformBufferPool &pool, const UboBlock<T> &)
       : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
@@ -74,17 +48,28 @@ namespace gpu {
       desc_write.pBufferInfo = &info;
     }
 
+    UBOBinding(uint32_t binding, const gpu::BufferPtr &buf) 
+      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC}
+    {
+      info.buffer = buf->api_buffer();
+      info.offset = 0;
+      info.range = buf->get_size();
+
+      desc_write.pBufferInfo = &info;
+    }
+
   private:
     VkDescriptorBufferInfo info {};
   };
 
   struct SSBOBinding : BaseBinding {
-    SSBOBinding(uint32_t binding, const gpu::Buffer &buf) 
+
+    SSBOBinding(uint32_t binding, const gpu::BufferPtr &buf) 
       : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
     {
-      info.buffer = buf.get_api_buffer();
+      info.buffer = buf->api_buffer();
       info.offset = 0;
-      info.range = buf.get_size();
+      info.range = buf->get_size();
 
       desc_write.pBufferInfo = &info;
     }
@@ -113,24 +98,6 @@ namespace gpu {
       desc_write.pImageInfo = &info;
     }
 
-    TextureBinding(uint32_t binding, Image &image, VkSampler sampler, uint32_t base_mip, uint32_t mips_count)
-      : BaseBinding {binding, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER}
-    {
-      info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      info.sampler = sampler;
-
-      ImageViewRange range {};
-      range.type = VK_IMAGE_VIEW_TYPE_2D;
-      range.base_layer = 0;
-      range.base_mip = base_mip;
-      range.layers_count = 1;
-      range.mips_count = mips_count;
-
-      info.imageView = image.get_view(range);
-      desc_write.pImageInfo = &info;
-    }
-
-    TextureBinding(uint32_t binding, Image &image, VkSampler sampler) : TextureBinding {binding, image, sampler, 0, image.get_mip_levels()} {}
   private:
     VkDescriptorImageInfo info {};
   };

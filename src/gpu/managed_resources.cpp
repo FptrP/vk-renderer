@@ -167,6 +167,27 @@ namespace gpu {
     coherent = false;
   }
 
+  void DriverBuffer::invalidate_mapped_memory() {
+    auto base = app_device().get_allocator();
+    vmaInvalidateAllocation(base, allocation, 0, VK_WHOLE_SIZE);
+  }
+
+  void DriverBuffer::flush(uint64_t offset, uint64_t size) {
+    if (coherent) return;
+    auto base = app_device().get_allocator();
+    vmaFlushAllocation(base, allocation, offset, size);
+  }
+
+  VkDeviceAddress DriverBuffer::device_address() const {
+    VkBufferDeviceAddressInfo info {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .pNext = nullptr,
+      .buffer = handle
+    };
+
+    return vkGetBufferDeviceAddress(app_device().api_device(), &info);
+  }
+
   static VkImageAspectFlagBits get_default_aspect(VkFormat fmt) {
     switch (fmt) {
       case VK_FORMAT_S8_UINT:
@@ -355,12 +376,22 @@ namespace gpu {
     return ImagePtr {id};
   }
 
-  void collect_resources() {
+  ImagePtr create_driver_image(const VkImageCreateInfo &info) {
+    auto *dimg = new DriverImage {info};
+    auto id = g_res_manager.register_resource(dimg, false);
+    return ImagePtr {id};
+  }
+
+  void collect_image_buffer_resources() {
     g_res_manager.collect_garbage();
   }
 
   void destroy_resources() {
     g_res_manager.clear_all();
+  }
+
+  DriverResource *acquire_resource(DriverResourceID id) {
+    return g_res_manager.acquire_resource(id);
   }
 
 }

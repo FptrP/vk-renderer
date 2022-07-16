@@ -16,10 +16,10 @@ namespace scene {
     }
   };
 
-  static void copy_pixels(VkCommandBuffer cmd, gpu::Image &dst, gpu::Buffer &transfer);
-  static void gen_image_mips(VkCommandBuffer cmd, gpu::Image &dst);
+  static void copy_pixels(VkCommandBuffer cmd, gpu::ImagePtr &dst, gpu::BufferPtr &transfer);
+  static void gen_image_mips(VkCommandBuffer cmd, gpu::ImagePtr &dst);
 
-  gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path) {
+  gpu::ImagePtr load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path) {
     int x, y, comps;
 
     std::unique_ptr<stbi_uc, PixelsDeleter> pixels;
@@ -31,14 +31,14 @@ namespace scene {
     
     uint32_t mips = std::floor(std::log2(std::max(x, y))) + 1;
     auto flags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
-    gpu::ImageInfo image_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, uint32_t(x), uint32_t(y), 1, mips, 1};
-    gpu::Image output_image {};
-    output_image.create(VK_IMAGE_TYPE_2D, image_info, VK_IMAGE_TILING_OPTIMAL, flags);
+    //gpu::ImageInfo image_info {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, uint32_t(x), uint32_t(y), 1, mips, 1};
+    //gpu::Image output_image {};
+    //output_image.create(VK_IMAGE_TYPE_2D, image_info, VK_IMAGE_TILING_OPTIMAL, flags);
 
-    gpu::Buffer transfer_buffer {};
+    auto output_image = gpu::create_tex2d(VK_FORMAT_R8G8B8A8_SRGB, uint32_t(x), uint32_t(y), mips, flags); 
     uint64_t buff_size = x * y * 4;
-    transfer_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, buff_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-    std::memcpy(transfer_buffer.get_mapped_ptr(), pixels.get(), buff_size);
+    auto transfer_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, buff_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    std::memcpy(transfer_buffer->get_mapped_ptr(), pixels.get(), buff_size);
     pixels.release();
 
     auto cmd = transfer_pool.get_cmd_buffer();
@@ -54,7 +54,7 @@ namespace scene {
     return output_image;
   }
 
-  static void copy_pixels(VkCommandBuffer cmd, gpu::Image &dst, gpu::Buffer &transfer) {
+  static void copy_pixels(VkCommandBuffer cmd, gpu::ImagePtr &dst, gpu::BufferPtr &transfer) {
     VkImageMemoryBarrier image_barrier {
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
       .pNext = nullptr,
@@ -64,19 +64,19 @@ namespace scene {
       .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .image = dst.get_image(),
+      .image = dst->api_image(),
       .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
     };
     
-    const auto &desc = dst.get_info();
+    const auto &desc = dst->get_info();
 
     VkBufferImageCopy copy_region {
       .bufferOffset = 0,
-      .bufferRowLength = desc.width,
-      .bufferImageHeight = desc.height,
+      .bufferRowLength = desc.extent.width,
+      .bufferImageHeight = desc.extent.height,
       .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
       .imageOffset = {0, 0, 0},
-      .imageExtent = {desc.width, desc.height, 1}
+      .imageExtent = {desc.extent.width, desc.extent.height, 1}
     };
 
     vkCmdPipelineBarrier(cmd,
@@ -87,15 +87,15 @@ namespace scene {
       0, nullptr,
       1, &image_barrier);
 
-    vkCmdCopyBufferToImage(cmd, transfer.get_api_buffer(), dst.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+    vkCmdCopyBufferToImage(cmd, transfer->api_buffer(), dst->api_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
   }
 
-  static void gen_image_mips(VkCommandBuffer cmd, gpu::Image &dst) {
-    auto &desc = dst.get_info();
-    for (uint32_t dst_mip = 1; dst_mip < desc.mip_levels; dst_mip++) {
+  static void gen_image_mips(VkCommandBuffer cmd, gpu::ImagePtr &dst) {
+    auto &desc = dst->get_info();
+    for (uint32_t dst_mip = 1; dst_mip < desc.mipLevels; dst_mip++) {
       const uint32_t src_mip = dst_mip - 1;
-      const int32_t src_width = desc.width/(1 << src_mip);
-      const int32_t src_height = desc.height/(1 << src_mip);
+      const int32_t src_width = desc.extent.width/(1 << src_mip);
+      const int32_t src_height = desc.extent.height/(1 << src_mip);
 
       VkImageMemoryBarrier src_barrier {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -106,7 +106,7 @@ namespace scene {
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dst.get_image(),
+        .image = dst->api_image(),
         .subresourceRange {VK_IMAGE_ASPECT_COLOR_BIT, src_mip, 1, 0, 1}
       };
 
@@ -119,7 +119,7 @@ namespace scene {
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dst.get_image(),
+        .image = dst->api_image(),
         .subresourceRange {VK_IMAGE_ASPECT_COLOR_BIT, dst_mip, 1, 0, 1}
       };
 
@@ -132,7 +132,7 @@ namespace scene {
         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dst.get_image(),
+        .image = dst->api_image(),
         .subresourceRange {VK_IMAGE_ASPECT_COLOR_BIT, src_mip, 1, 0, 1}
       };
       
@@ -154,8 +154,8 @@ namespace scene {
         2, barriers.begin());
 
       vkCmdBlitImage(cmd, 
-        dst.get_image(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        dst.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        dst->api_image(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        dst->api_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, &blit_region,
         VK_FILTER_LINEAR);
 
@@ -177,8 +177,8 @@ namespace scene {
       .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .image = dst.get_image(),
-      .subresourceRange {VK_IMAGE_ASPECT_COLOR_BIT, dst.get_info().mip_levels - 1, 1, 0, 1}
+      .image = dst->api_image(),
+      .subresourceRange {VK_IMAGE_ASPECT_COLOR_BIT, dst->get_info().mipLevels - 1, 1, 0, 1}
     };
 
     vkCmdPipelineBarrier(cmd,

@@ -604,7 +604,7 @@ namespace rendergraph {
       image_barriers.data());
   }
 
-  gpu::Buffer &RenderResources::get_buffer(BufferResourceId id) {
+  gpu::BufferPtr &RenderResources::get_buffer(BufferResourceId id) {
     return resources.get_buffer(id);
   }
   

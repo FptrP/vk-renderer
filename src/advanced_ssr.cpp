@@ -56,8 +56,8 @@ AdvancedSSR::AdvancedSSR(rendergraph::RenderGraph &graph, uint32_t w, uint32_t h
   auto halton_samples = halton23_seq(HALTON_SEQ_SIZE);
   const uint64_t bytes = sizeof(halton_samples[0]) * HALTON_SEQ_SIZE;
 
-  halton_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, bytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-  std::memcpy(halton_buffer.get_mapped_ptr(), halton_samples.data(), bytes);
+  halton_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, bytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  std::memcpy(halton_buffer->get_mapped_ptr(), halton_samples.data(), bytes);
   
   gpu::ImageInfo rays_info {VK_FORMAT_R16G16B16A16_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, w/2, h/2};
   rays = graph.create_image(VK_IMAGE_TYPE_2D, rays_info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT);
@@ -292,12 +292,12 @@ void AdvancedSSR::run_trace_indirect_pass(
       pc.reflection_type = 0; //mirror reflections
       cmd.bind_descriptors_compute(0, {set_mirror}, {blk.offset, 0});
       cmd.push_constants_compute(0, sizeof(pc), &pc);
-      cmd.dispatch_indirect(resources.get_buffer(reflective_indirect).get_api_buffer());
+      cmd.dispatch_indirect(resources.get_buffer(reflective_indirect)->api_buffer());
       
       pc.reflection_type = 1; //glossy reflections
       cmd.bind_descriptors_compute(0, {set_glossy}, {blk.offset, 0});
       cmd.push_constants_compute(0, sizeof(pc), &pc);
-      cmd.dispatch_indirect(resources.get_buffer(glossy_indirect).get_api_buffer());
+      cmd.dispatch_indirect(resources.get_buffer(glossy_indirect)->api_buffer());
     });
 }
 
@@ -446,8 +446,8 @@ void AdvancedSSR::clear_indirect_params(rendergraph::RenderGraph &graph) {
     },
     [=](Input &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd) {
       VkDispatchIndirectCommand initial_dispath {0, 1, 1};
-      cmd.update_buffer(resources.get_buffer(reflective_indirect).get_api_buffer(), 0, initial_dispath);
-      cmd.update_buffer(resources.get_buffer(glossy_indirect).get_api_buffer(), 0, initial_dispath);
+      cmd.update_buffer(resources.get_buffer(reflective_indirect)->api_buffer(), 0, initial_dispath);
+      cmd.update_buffer(resources.get_buffer(glossy_indirect)->api_buffer(), 0, initial_dispath);
     });
 }
 

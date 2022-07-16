@@ -34,6 +34,10 @@ namespace gpu {
         && (layers_count == o.layers_count); 
     }
   };
+
+  inline ImageViewRange make_image_range2D(uint32_t base_mip, uint32_t mip_count, uint32_t base_layer = 0, uint32_t layer_count = 1) {
+    return ImageViewRange {VK_IMAGE_VIEW_TYPE_2D, base_mip, mip_count, base_layer, layer_count};
+  }
 }
 
 namespace std {

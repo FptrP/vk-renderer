@@ -35,7 +35,7 @@ private:
     uint32_t height;
     VkFormat texel_fmt;
     uint32_t texel_size;
-    gpu::Buffer data;
+    gpu::BufferPtr data;
   };
 
   ReadBackID next_request_id = 0;

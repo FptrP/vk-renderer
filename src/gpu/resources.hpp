@@ -13,51 +13,6 @@
 
 namespace gpu {
 
-  struct Buffer {
-    Buffer() {}
-    ~Buffer() { close(); }
-    
-    void create(VmaMemoryUsage memory, uint64_t buffer_size, VkBufferUsageFlags usage);
-    void close();
-    void flush(uint64_t offset = 0, uint64_t size = VK_WHOLE_SIZE);
-    void invalidate_mapped_memory();
-    
-    VkBuffer get_api_buffer() const { return handle; }
-    uint64_t get_size() const { return size; }
-    bool is_coherent() const { return coherent; }
-    bool is_empty() const { return (size == 0) || (handle == nullptr); }
-    
-    void *get_mapped_ptr() const { return mapped_ptr; }
-
-    VkDeviceAddress get_device_address() const;
-
-    Buffer(Buffer&) = delete;
-    const Buffer &operator=(const Buffer&) = delete;
-  
-    Buffer(Buffer &&o)
-      : handle {o.handle}, 
-        allocation {o.allocation}, size {o.size}, coherent {o.coherent}, mapped_ptr {o.mapped_ptr} 
-    {
-      o.handle = nullptr;
-    }
-
-    Buffer &operator=(Buffer &&o) {
-      std::swap(handle, o.handle);
-      std::swap(allocation, o.allocation);
-      std::swap(size, o.size);
-      std::swap(coherent, o.coherent);
-      std::swap(mapped_ptr, o.mapped_ptr);
-      return *this;
-    }
-
-  private:
-    VkBuffer handle {nullptr};
-    VmaAllocation allocation {nullptr};
-    uint64_t size {0};
-    bool coherent = false;
-    void *mapped_ptr = nullptr;
-  };
-
   enum class ImageCreateOptions {
     None,
     Cubemap,

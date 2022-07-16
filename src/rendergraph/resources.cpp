@@ -48,7 +48,6 @@ namespace rendergraph {
   }
   
   BufferResourceId GraphResources::create_global_buffer(const BufferDescriptor &desc) {
-    uint32_t remap_index = buffer_remap.size();
     uint32_t buffer_index = global_buffers.size();
 
     global_buffers.emplace_back(GlobalBuffer {
@@ -56,11 +55,10 @@ namespace rendergraph {
       {}
     });
 
-    global_buffers.back().vk_buffer.create(desc.memory_type, desc.size, desc.usage);
-    buffer_remap.emplace_back(buffer_index);
+    global_buffers.back().vk_buffer = gpu::create_buffer(desc.memory_type, desc.size, desc.usage);
 
     BufferResourceId id {};
-    id.index = remap_index;
+    id.index = buffer_index;
     return id;
   }
   
@@ -69,7 +67,8 @@ namespace rendergraph {
   }
   
   void GraphResources::remap(BufferResourceId src, BufferResourceId dst) {
-    std::swap(buffer_remap.at(src.index), buffer_remap.at(dst.index));
+    //std::swap(buffer_remap.at(src.index), buffer_remap.at(dst.index));
+    std::swap(global_buffers.at(src.index), global_buffers.at(dst.index));
   }
 
   const gpu::ImageInfo &GraphResources::get_info(ImageResourceId id) const {
@@ -82,14 +81,14 @@ namespace rendergraph {
     return global_images.at(index).vk_image;
   }
   
-  gpu::Buffer &GraphResources::get_buffer(BufferResourceId id) {
-    auto index = buffer_remap.at(id.index);
-    return global_buffers.at(index).vk_buffer;
+  gpu::BufferPtr &GraphResources::get_buffer(BufferResourceId id) {
+    //auto index = buffer_remap.at(id.index);
+    return global_buffers.at(id.index).vk_buffer;
   }
 
   const BufferTrackingState &GraphResources::get_resource_state(BufferResourceId id) const {
-    auto index = buffer_remap.at(id.index);
-    return global_buffers.at(index).state;
+    //auto index = buffer_remap.at(id.index);
+    return global_buffers.at(id.index).state;
   }
   
   const ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) const {
@@ -102,8 +101,8 @@ namespace rendergraph {
   }
     
   BufferTrackingState &GraphResources::get_resource_state(BufferResourceId id) {
-    auto index = buffer_remap.at(id.index);
-    return global_buffers.at(index).state;
+    //auto index = buffer_remap.at(id.index);
+    return global_buffers.at(id.index).state;
   }
   
   ImageTrackingState &GraphResources::get_resource_state(ImageSubresourceId id) {

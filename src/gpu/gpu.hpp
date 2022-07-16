@@ -30,27 +30,25 @@ namespace gpu {
 
   void reload_shaders();
 
-  template<typename T>
-  DynBuffer<T> create_dynbuffer(uint32_t elems_count) {
-    auto &dev = app_device();
-    return DynBuffer<T>{dev.get_allocator(), dev.get_properties().limits.minUniformBufferOffsetAlignment, elems_count};
-  }
-
   template <typename... Bindings> 
   void write_set(VkDescriptorSet set, const Bindings&... bindings) {
     internal::write_set(app_device().api_device(), set, bindings...);
   }
-
-  void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders);
-  void create_program(const std::string &name, std::vector<ShaderBinding> &&shaders);
+  
+  void create_program(const std::string &name, std::initializer_list<std::string> shaders);
+  void create_program(const std::string &name, std::vector<std::string> &&shaders);
 
   std::vector<CmdContext> allocate_cmd_contexts(CmdBufferPool &pool, uint32_t count);
   
   std::vector<Image> get_swapchain_images();
+  std::vector<ImagePtr> get_swapchain_image_ptr();
+  
   uint32_t get_swapchain_image_count();
 
   ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout);
   ManagedDescriptorSet allocate_descriptor_set(VkDescriptorSetLayout layout, const std::initializer_list<uint32_t> &variable_sizes);
+
+  void collect_resources();
 }
 
 #endif

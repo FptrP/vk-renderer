@@ -24,7 +24,7 @@ namespace scene {
   }
 
   void SceneAccelerationStructure::build_blas(gpu::TransferCmdPool &transfer_pool, const BaseMesh &mesh, const CompiledScene &source) {
-    uint32_t verts_count = source.vertex_buffer.get_size()/sizeof(Vertex);
+    uint32_t verts_count = source.vertex_buffer->get_size()/sizeof(Vertex);
     if (!verts_count) {
       verts_count = 1;
     }
@@ -41,11 +41,11 @@ namespace scene {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
       .pNext = nullptr,
       .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-      .vertexData = VkDeviceOrHostAddressConstKHR {.deviceAddress = source.vertex_buffer.get_device_address()},
+      .vertexData = VkDeviceOrHostAddressConstKHR {.deviceAddress = source.vertex_buffer->device_address()},
       .vertexStride = sizeof(Vertex),
       .maxVertex = verts_count - 1,
       .indexType = VK_INDEX_TYPE_UINT32,
-      .indexData = VkDeviceOrHostAddressConstKHR {.deviceAddress = source.index_buffer.get_device_address()},
+      .indexData = VkDeviceOrHostAddressConstKHR {.deviceAddress = source.index_buffer->device_address()},
       .transformData = VkDeviceOrHostAddressConstKHR {.hostAddress = nullptr}
     };
     
@@ -99,14 +99,14 @@ namespace scene {
     
     std::cout << build_info.accelerationStructureSize/1024 << "\n";
   
-    gpu::Buffer storage_buffer;
-    storage_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, build_info.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+    auto storage_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, build_info.accelerationStructureSize,
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
     VkAccelerationStructureCreateInfoKHR create_info {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
       .pNext = nullptr,
       .createFlags = 0,
-      .buffer = storage_buffer.get_api_buffer(),
+      .buffer = storage_buffer->api_buffer(),
       .offset = 0,
       .size = build_info.accelerationStructureSize,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
@@ -119,13 +119,12 @@ namespace scene {
     blas_array.push_back(acceleration_struct);
     blas_buffers.push_back(std::move(storage_buffer));
 
-    gpu::Buffer scratch_buffer;
-    scratch_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, build_info.buildScratchSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+    auto scratch_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, build_info.buildScratchSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
     auto range_ptr = prim_data.data();
     
     mesh_info.dstAccelerationStructure = acceleration_struct;
-    mesh_info.scratchData.deviceAddress = scratch_buffer.get_device_address();
+    mesh_info.scratchData.deviceAddress = scratch_buffer->device_address();
 
     VkCommandBufferBeginInfo begin_info {};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -180,9 +179,11 @@ namespace scene {
     }
     
 
-    gpu::Buffer instance_buffer;
-    instance_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(instance) * nodes.size(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-    auto instance_data = (VkAccelerationStructureInstanceKHR*)instance_buffer.get_mapped_ptr();
+  
+    auto instance_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(instance) * nodes.size(),
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+    auto instance_data = (VkAccelerationStructureInstanceKHR*)instance_buffer->get_mapped_ptr();
 
     auto vk_device = gpu::app_device().api_device();
 
@@ -211,7 +212,7 @@ namespace scene {
 		geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
 		geometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
 		geometry.geometry.instances.arrayOfPointers = VK_FALSE;
-		geometry.geometry.instances.data = VkDeviceOrHostAddressConstKHR {.deviceAddress = instance_buffer.get_device_address()};
+		geometry.geometry.instances.data = VkDeviceOrHostAddressConstKHR {.deviceAddress = instance_buffer->device_address()};
 
     VkAccelerationStructureBuildGeometryInfoKHR build_geometry {};
 		build_geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -233,13 +234,14 @@ namespace scene {
     
     std::cout << "TLAS : " << build_sizes.accelerationStructureSize << "\n";
   
-    tlas_memory.create(VMA_MEMORY_USAGE_GPU_ONLY, build_sizes.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+    tlas_memory = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, build_sizes.accelerationStructureSize,
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
     VkAccelerationStructureCreateInfoKHR create_info {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
       .pNext = nullptr,
       .createFlags = 0,
-      .buffer = tlas_memory.get_api_buffer(),
+      .buffer = tlas_memory->api_buffer(),
       .offset = 0,
       .size = build_sizes.accelerationStructureSize,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
@@ -248,8 +250,8 @@ namespace scene {
 
     VKCHECK(vkCreateAccelerationStructureKHR(vk_device, &create_info, nullptr, &tlas));
 
-    gpu::Buffer scratch_buffer;
-    scratch_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, build_sizes.buildScratchSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+    auto scratch_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, build_sizes.buildScratchSize,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
     VkAccelerationStructureBuildRangeInfoKHR build_range {
       .primitiveCount = primitive_count,
@@ -260,7 +262,7 @@ namespace scene {
 
     auto range_ptr = &build_range;
     build_geometry.dstAccelerationStructure = tlas;
-    build_geometry.scratchData.deviceAddress = scratch_buffer.get_device_address();
+    build_geometry.scratchData.deviceAddress = scratch_buffer->device_address();
 
     VkCommandBufferBeginInfo begin_info {};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

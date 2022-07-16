@@ -45,12 +45,6 @@ namespace gpu {
     }
   };
 
-  struct ShaderBinding {
-    VkShaderStageFlagBits stage;
-    std::string path;
-    std::string main;
-  };
-
   bool operator==(const VkVertexInputBindingDescription &l, const VkVertexInputBindingDescription &r);
   bool operator==(const VkVertexInputAttributeDescription &l, const VkVertexInputAttributeDescription &r);
   bool operator==(const VkPipelineInputAssemblyStateCreateInfo &l, const VkPipelineInputAssemblyStateCreateInfo &r);
@@ -272,30 +266,9 @@ namespace gpu {
   struct PipelinePool {
     PipelinePool();
     ~PipelinePool();
-
-    void create_program(const std::string &name, std::initializer_list<ShaderBinding> shaders) {
-
-      std::vector<std::string> shader_path;
-      shader_path.reserve(shaders.size());
-      for (auto &s : shaders) {
-        shader_path.push_back(s.path);
-      }
-      
-      create_program(name, std::move(shader_path));
-    }
     
     void create_program(const std::string &name, std::vector<std::string> &&shaders) {
       shader_programs.create_program(name, shaders);
-    }
-
-    void create_program(const std::string &name, std::vector<ShaderBinding> &&bindings) {
-      std::vector<std::string> shader_path;
-      shader_path.reserve(bindings.size());
-      for (auto &s : bindings) {
-        shader_path.push_back(s.path);
-      }
-      
-      create_program(name, std::move(shader_path));
     }
 
     void reload_programs();

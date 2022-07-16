@@ -12,10 +12,10 @@ namespace scene {
     void build_blas(gpu::TransferCmdPool &transfer_pool, const BaseMesh &mesh, const CompiledScene &source);
     void build_tlas(gpu::TransferCmdPool &transfer_pool, const CompiledScene &source);
 
-    std::vector<gpu::Buffer> blas_buffers;
+    std::vector<gpu::BufferPtr> blas_buffers;
     std::vector<VkAccelerationStructureKHR> blas_array;
 
-    gpu::Buffer tlas_memory;
+    gpu::BufferPtr tlas_memory;
     VkAccelerationStructureKHR tlas {nullptr};
   };
 

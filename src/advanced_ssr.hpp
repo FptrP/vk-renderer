@@ -37,7 +37,7 @@ struct AdvancedSSR {
   rendergraph::ImageResourceId get_preintegrated_brdf() const { return preintegrated_brdf; }
 
 private:
-  gpu::Buffer halton_buffer;
+  gpu::BufferPtr halton_buffer;
 
   rendergraph::BufferResourceId reflective_indirect;
   rendergraph::BufferResourceId glossy_indirect;

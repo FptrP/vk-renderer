@@ -4,6 +4,8 @@ layout (set = 0, binding = 0, r32f) uniform writeonly image2D OUT_PDF;
 
 const int STEP_COUNT = 2000;
 
+layout (constant_id = 0) const int MY_CONST = 100;
+
 float G(in float t, in float a, in float b);
 float G2(in float t, in float a, in float b);
 vec2 calc_bounds(in float a, in float b);

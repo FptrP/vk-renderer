@@ -191,9 +191,9 @@ static void load_shaders(const fs::path &config_path) {
     const auto prog_name = elem.key();
     const auto &prog = elem.value();
 
-    std::vector<gpu::ShaderBinding> bindings; 
-    bindings.reserve(prog.size());
-    
+    std::vector<std::string> shader_names;
+    shader_names.reserve(prog.size());
+
     for (const auto &shader : prog.items()) {
       const auto &key = shader.key();
       const auto &val = shader.value();
@@ -202,20 +202,15 @@ static void load_shaders(const fs::path &config_path) {
         throw std::runtime_error {"Incorrect stage"};
       }
 
-      gpu::ShaderBinding binding;
-      binding.stage = stage->second;
-      binding.main = "main";
-
       auto file_path = shader_dir / val.get<std::string>();
       if (!file_path.has_extension()) {
         file_path += ".spv";
       }
 
-      binding.path = file_path.string();
-      bindings.push_back(std::move(binding));
+      shader_names.push_back(file_path.string());
     }
     std::cout << "Loading " << prog_name << " program\n";
-    gpu::create_program(prog_name, std::move(bindings));
+    gpu::create_program(prog_name, std::move(shader_names));
   }
 }
 

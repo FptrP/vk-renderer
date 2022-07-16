@@ -12,7 +12,7 @@ rendergraph::ImageResourceId create_gtao_texture(rendergraph::RenderGraph &graph
   return graph.create_image(VK_IMAGE_TYPE_2D, info, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
 }
 
-static gpu::Buffer create_random_vectors(uint32_t vectors_count);
+static gpu::BufferPtr create_random_vectors(uint32_t vectors_count);
 
 GTAO::GTAO(rendergraph::RenderGraph &graph, uint32_t width, uint32_t height, bool use_ray_query, bool half_res, int pattern_n)
   : deinterleave_n {pattern_n}
@@ -412,7 +412,7 @@ void GTAO::add_main_pass_graphics(
     });
 }
 
-static gpu::Buffer create_random_vectors(uint32_t vectors_count) {
+static gpu::BufferPtr create_random_vectors(uint32_t vectors_count) {
   std::uniform_real_distribution<float> random_floats {0.0, 1.0};
   std::default_random_engine generator;
   std::vector<glm::vec4> random_vectors;
@@ -435,9 +435,9 @@ static gpu::Buffer create_random_vectors(uint32_t vectors_count) {
 
   auto buffer_size = sizeof(glm::vec4) * random_vectors.size();
   
-  gpu::Buffer vec_buffer;
-  vec_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-  std::memcpy(vec_buffer.get_mapped_ptr(), random_vectors.data(), buffer_size);
+  
+  auto vec_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+  std::memcpy(vec_buffer->get_mapped_ptr(), random_vectors.data(), buffer_size);
 
   return vec_buffer;
 }

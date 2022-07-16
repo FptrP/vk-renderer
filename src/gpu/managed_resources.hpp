@@ -96,8 +96,8 @@ namespace gpu {
     DriverBuffer(VmaMemoryUsage memory, uint64_t buffer_size, VkBufferUsageFlags usage);
     ~DriverBuffer();
     
-    //void flush(uint64_t offset = 0, uint64_t size = VK_WHOLE_SIZE);
-    //void invalidate_mapped_memory();
+    void flush(uint64_t offset = 0, uint64_t size = VK_WHOLE_SIZE);
+    void invalidate_mapped_memory();
     
     VkBuffer api_buffer() const { return handle; }
     uint64_t get_size() const { return size; }
@@ -155,7 +155,7 @@ namespace gpu {
     const DriverImage *operator->() const { return static_cast<const DriverImage*>(ptr); }
   };
 
-  void collect_resources();
+  void collect_image_buffer_resources();
   void destroy_resources();
 
   BufferPtr create_buffer(VmaMemoryUsage memory, uint64_t buffer_size, VkBufferUsageFlags usage);
@@ -165,6 +165,9 @@ namespace gpu {
   ImagePtr create_tex2d_array(VkFormat fmt, uint32_t w, uint32_t h, uint32_t mips, uint32_t layers, VkImageUsageFlags usage);
   ImagePtr create_cubemap(VkFormat fmt, uint32_t size, uint32_t mips, VkImageUsageFlags usage);
   ImagePtr create_image_ref(VkImage vkimg, const VkImageCreateInfo &info);
+  ImagePtr create_driver_image(const VkImageCreateInfo &info);
+
+  DriverResource *acquire_resource(DriverResourceID id);
 }
 
 #endif

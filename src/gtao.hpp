@@ -108,7 +108,7 @@ private:
   int deinterleave_n = 2;
   uint32_t depth_lod = 0;
 
-  gpu::Buffer random_vectors;
+  gpu::BufferPtr random_vectors;
   bool mis_gtao = true;
   bool two_directions = false;
   bool only_reflections = false;

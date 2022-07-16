@@ -33,7 +33,7 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, rendergraph::ImageR
       auto set = resources.allocate_set(pipeline.get_layout(0));
 
       gpu::write_set(set,
-        gpu::TextureBinding {0, resources.get_image(data.texture_view), sampler});
+        gpu::TextureBinding {0, resources.get_view(data.texture_view), sampler});
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
       VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};
@@ -71,9 +71,10 @@ void add_backbuffer_subpass(rendergraph::RenderGraph &graph, gpu::Image &image, 
       const auto &desc = resources.get_image(data.backbuff_view).get_info();
       
       auto set = resources.allocate_set(pipeline.get_layout(0));
+      auto range = gpu::make_image_range2D(0, ~0u);
 
       gpu::write_set(set,
-        gpu::TextureBinding {0, image, sampler});
+        gpu::TextureBinding {0, image.get_view(range), sampler});
 
       VkRect2D scissors {{0, 0}, desc.extent2D()};
       VkViewport viewport {0.f, 0.f, (float)desc.width, (float)desc.height, 0.f, 1.f};

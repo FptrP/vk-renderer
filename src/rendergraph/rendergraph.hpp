@@ -57,7 +57,7 @@ namespace rendergraph {
   struct RenderResources {
     RenderResources(GraphResources &res, GpuState &state) : resources {res}, gpu {state} {}
 
-    gpu::Buffer &get_buffer(BufferResourceId id);
+    gpu::BufferPtr &get_buffer(BufferResourceId id);
     gpu::Image &get_image(ImageResourceId id);
     VkImageView get_view(const ImageViewId &ref);
 

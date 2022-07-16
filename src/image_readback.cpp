@@ -78,15 +78,13 @@ ReadBackID ReadBackSystem::read_image(rendergraph::RenderGraph &graph, rendergra
   uint32_t texel_size = get_texel_size(desc.format); //stencil not supported
   VkImageAspectFlags image_aspect = (aspect != 0)? aspect : desc.aspect; 
   
-  gpu::Buffer buffer;
-  buffer.create(VMA_MEMORY_USAGE_GPU_TO_CPU, image_height * image_width * texel_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-  auto api_buffer = buffer.get_api_buffer();
+  auto buf = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_TO_CPU, image_height * image_width * texel_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+  auto api_buffer = buf->api_buffer();
   
   ReadBackID id = next_request_id;
   next_request_id++;
 
-  //requests.push_back(Request {image_width, image_height, desc.format, texel_size, std::move(buffer)});
-  requests[id] = Request {graph.get_frames_count() + 1, image_width, image_height, desc.format, texel_size, std::move(buffer)};
+  requests[id] = Request {graph.get_frames_count() + 1, image_width, image_height, desc.format, texel_size, std::move(buf)};
 
   graph.add_task<TaskData>("ImageRead",
     [&](TaskData &, rendergraph::RenderGraphBuilder &builder) {
@@ -122,12 +120,12 @@ void ReadBackSystem::after_submit(rendergraph::RenderGraph &graph) {
 
     auto id = it->first;
     auto &src_request = it->second;
-    auto src_ptr = src_request.data.get_mapped_ptr();
+    auto src_ptr = src_request.data->get_mapped_ptr();
 
     if (!src_ptr) {
       throw std::runtime_error {"Error, readback got unmapped cpu pointer"};
     }
-    src_request.data.invalidate_mapped_memory();
+    src_request.data->invalidate_mapped_memory();
     
     ReadBackData dst_request {};
     dst_request.width = src_request.width;

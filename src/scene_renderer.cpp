@@ -85,9 +85,9 @@ void SceneRenderer::init_pipeline(rendergraph::RenderGraph &graph, const Gbuffer
   for (auto tex_desc : target.textures) {
     gpu::ImageViewRange range {VK_IMAGE_VIEW_TYPE_2D, 0, 1, 0, 1};
     auto &img = target.images[tex_desc.image_index];
-    range.mips_count = img.get_mip_levels();
+    range.mips_count = img->get_mip_levels();
 
-    scene_textures.push_back({img.get_view(range), target.samplers[tex_desc.sampler_index]});
+    scene_textures.push_back({img->get_view(range), target.samplers[tex_desc.sampler_index]});
   }
 
   uint32_t count = (uint32_t)scene_textures.size();
@@ -174,8 +174,8 @@ void SceneRenderer::draw_taa(rendergraph::RenderGraph &graph, const Gbuffer &gbu
         resources.get_view(input.depth)
       });
 
-      auto vbuf = target.vertex_buffer.get_api_buffer();
-      auto ibuf = target.index_buffer.get_api_buffer();
+      auto vbuf = target.vertex_buffer->api_buffer();
+      auto ibuf = target.index_buffer->api_buffer();
       
       cmd.bind_pipeline(opaque_taa_pipeline);
       cmd.clear_color_attachments(0.f, 0.f, 0.f, 0.f);

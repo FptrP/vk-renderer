@@ -205,7 +205,7 @@ namespace rendergraph {
 
     const gpu::ImageInfo &get_info(ImageResourceId id) const;
     gpu::Image &get_image(ImageResourceId id);
-    gpu::Buffer &get_buffer(BufferResourceId id);
+    gpu::BufferPtr &get_buffer(BufferResourceId id);
 
     const BufferTrackingState &get_resource_state(BufferResourceId id) const;
     const ImageTrackingState &get_resource_state(ImageSubresourceId id) const;
@@ -221,12 +221,11 @@ namespace rendergraph {
     };
     
     struct GlobalBuffer {
-      gpu::Buffer vk_buffer;
+      gpu::BufferPtr vk_buffer;
       BufferTrackingState state;
     };
 
     std::vector<uint32_t> image_remap;
-    std::vector<uint32_t> buffer_remap;
     std::vector<GlobalImage> global_images;
     std::vector<GlobalBuffer> global_buffers;
   };

@@ -25,7 +25,7 @@ namespace gpu_transfer {
         throw std::runtime_error {"Uploading error"};
       }
 
-      auto ptr = static_cast<uint8_t*>(transfer_buffers[buffer_id].get_mapped_ptr());
+      auto ptr = static_cast<uint8_t*>(transfer_buffers[buffer_id]->get_mapped_ptr());
       std::memcpy(ptr + write_offset, data, size);
 
       TransferBlock block {id, offset, write_offset, size};
@@ -39,7 +39,7 @@ namespace gpu_transfer {
 
     uint64_t write_offset = 0;
     uint32_t buffer_id = 0;
-    std::vector<gpu::Buffer> transfer_buffers;
+    std::vector<gpu::BufferPtr> transfer_buffers;
   };
 
   TransferState *g_transfer_state = nullptr;
@@ -52,9 +52,10 @@ namespace gpu_transfer {
     auto buf_count = graph.get_frames_count();
 
     for (uint32_t i = 0; i < buf_count; i++) {
-      gpu::Buffer buf;
-      buf.create(VMA_MEMORY_USAGE_CPU_TO_GPU, MAX_TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-      g_transfer_state->transfer_buffers.push_back(std::move(buf));
+      //gpu::Buffer buf;
+      //buf.create(VMA_MEMORY_USAGE_CPU_TO_GPU, MAX_TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+      auto buf = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, MAX_TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+      g_transfer_state->transfer_buffers.emplace_back(std::move(buf));
     }
 
   }
@@ -87,7 +88,7 @@ namespace gpu_transfer {
       [=](Data &input, rendergraph::RenderResources &resources, gpu::CmdContext &cmd){
         
         auto api_cmd = cmd.get_command_buffer();
-        auto src_buffer = g_transfer_state->transfer_buffers[input.buffer_id].get_api_buffer(); 
+        auto src_buffer = g_transfer_state->transfer_buffers[input.buffer_id]->api_buffer(); 
         
         for (const auto &block : input.blocks) {
           
@@ -97,7 +98,7 @@ namespace gpu_transfer {
             .size = block.size
           };
 
-          auto dst_buffer = resources.get_buffer(block.dst).get_api_buffer();
+          auto dst_buffer = resources.get_buffer(block.dst)->api_buffer();
           vkCmdCopyBuffer(api_cmd, src_buffer, dst_buffer, 1, &region);
         }
       });

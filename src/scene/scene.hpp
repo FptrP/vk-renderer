@@ -70,9 +70,9 @@ namespace scene {
     CompiledScene &operator=(CompiledScene &) = delete;
 
     std::vector<Material> materials;
-    gpu::Buffer vertex_buffer;
-    gpu::Buffer index_buffer;
-    std::vector<gpu::Image> images;
+    gpu::BufferPtr vertex_buffer;
+    gpu::BufferPtr index_buffer;
+    std::vector<gpu::ImagePtr> images;
     
     std::vector<VkSampler> samplers;
     std::vector<Texture> textures;
@@ -84,7 +84,7 @@ namespace scene {
   gpu::VertexInput get_vertex_input_shadow();
 
   CompiledScene load_tinygltf_scene(gpu::TransferCmdPool &transfer_pool, const std::string &path, bool for_ray_traing = true);
-  gpu::Image load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path);
+  gpu::ImagePtr load_image_rgba8(gpu::TransferCmdPool &transfer_pool, const char *path);
 }
 
 #endif

@@ -59,7 +59,7 @@ namespace scene {
     return vinput;
   }
 
-  static void copy_data(gpu::TransferCmdPool &transfer_pool, gpu::Buffer &dst, gpu::Buffer &transfer, uint32_t byte_count, uint8_t *data) {
+  static void copy_data(gpu::TransferCmdPool &transfer_pool, gpu::BufferPtr &dst, gpu::BufferPtr &transfer, uint32_t byte_count, uint8_t *data) {
     
     VkCommandBufferBeginInfo begin_info {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -72,9 +72,9 @@ namespace scene {
     uint32_t remaining_size = byte_count;
 
     while (remaining_size) {
-      auto chunk = std::min(remaining_size, (uint32_t)transfer.get_size());
-      std::memcpy(transfer.get_mapped_ptr(), data, chunk);
-      transfer.flush();
+      auto chunk = std::min(remaining_size, (uint32_t)transfer->get_size());
+      std::memcpy(transfer->get_mapped_ptr(), data, chunk);
+      transfer->flush();
       
       VkBufferCopy region {
         .srcOffset = 0,
@@ -89,7 +89,7 @@ namespace scene {
       auto cmd = transfer_pool.get_cmd_buffer();
 
       vkBeginCommandBuffer(cmd, &begin_info);
-      vkCmdCopyBuffer(cmd, transfer.get_api_buffer(), dst.get_api_buffer(), 1, &region);
+      vkCmdCopyBuffer(cmd, transfer->api_buffer(), dst->api_buffer(), 1, &region);
       vkEndCommandBuffer(cmd);
       transfer_pool.submit_and_wait();
     }
@@ -292,12 +292,11 @@ namespace scene {
       ray_tracing_flags |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
     }
 
-    out_scene.vertex_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, verts_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|ray_tracing_flags);
-    out_scene.index_buffer.create(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|ray_tracing_flags);
+    out_scene.vertex_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, verts_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|ray_tracing_flags);
+    out_scene.index_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_GPU_ONLY, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|ray_tracing_flags);
 
     const uint32_t TRANSFER_SIZE = 10 * 1024;
-    gpu::Buffer transfer_buffer;
-    transfer_buffer.create(VMA_MEMORY_USAGE_CPU_TO_GPU, TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    auto transfer_buffer = gpu::create_buffer(VMA_MEMORY_USAGE_CPU_TO_GPU, TRANSFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
     
     copy_data(transfer_pool, out_scene.vertex_buffer, transfer_buffer, verts_size, (uint8_t*)vertices.data());
     copy_data(transfer_pool, out_scene.index_buffer, transfer_buffer, index_size, (uint8_t*)indexes.data());
